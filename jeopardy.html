@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeopardy Game Studio & Host</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Impact&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        jeopardy: {
+                            blue: '#060ce9',
+                            darkBlue: '#0000a5',
+                            gold: '#ffcc00',
+                            goldHover: '#e6b800',
+                            cardBg: '#000888',
+                            darkBg: '#020224'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        impact: ['Impact', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #020224;
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        .text-shadow-jeopardy {
+            text-shadow: 3px 3px 0px #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+        }
+        .text-shadow-gold {
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+        .glass-panel {
+            background: rgba(0, 8, 136, 0.6);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 204, 0, 0.25);
+        }
+        .board-control-glow {
+            box-shadow: 0 0 20px rgba(255, 204, 0, 0.5);
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #020224;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #000888;
+            border-radius: 4px;
+            border: 1px solid #ffcc00;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #ffcc00;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- Header Navigation -->
+    <header class="bg-jeopardy-darkBlue border-b border-jeopardy-gold/40 px-4 py-3 sticky top-0 z-30 shadow-lg">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="bg-jeopardy-gold text-jeopardy-darkBg font-impact text-2xl px-3 py-1 rounded shadow-md tracking-wider flex items-center gap-1.5">
+                    <i data-lucide="trophy" class="w-6 h-6"></i> JEOPARDY!
+                </div>
+                <span class="text-xs md:text-sm text-amber-200 font-semibold tracking-wide hidden sm:inline">
+                    STUDIO & STAGE HOST
+                </span>
+            </div>
+
+            <!-- View Switcher Tabs -->
+            <div class="flex bg-black/40 p-1 rounded-lg border border-jeopardy-gold/30">
+                <button id="navBoardBtn" onclick="switchTab('board')" class="px-4 py-1.5 rounded-md text-xs md:text-sm font-bold transition flex items-center gap-2 bg-jeopardy-gold text-jeopardy-darkBg shadow">
+                    <i data-lucide="layout-grid" class="w-4 h-4"></i> Game Board
+                </button>
+                <button id="navEditorBtn" onclick="switchTab('editor')" class="px-4 py-1.5 rounded-md text-xs md:text-sm font-bold text-gray-300 hover:text-white transition flex items-center gap-2">
+                    <i data-lucide="edit-3" class="w-4 h-4"></i> Game Editor
+                </button>
+                <button id="navRulesBtn" onclick="switchTab('rules')" class="px-4 py-1.5 rounded-md text-xs md:text-sm font-bold text-gray-300 hover:text-white transition flex items-center gap-2">
+                    <i data-lucide="sliders" class="w-4 h-4"></i> Rules & Stages
+                </button>
+            </div>
+
+            <!-- Header Quick Actions -->
+            <div class="flex items-center gap-2">
+                <button onclick="undoLastAction()" id="btnUndo" disabled title="Undo last scoring/turn action" class="px-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-xs font-semibold text-gray-400 opacity-50 cursor-not-allowed transition flex items-center gap-1">
+                    <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i> Undo
+                </button>
+                <button onclick="resetCurrentGameScore()" title="Reset Scores & Played Questions" class="px-3 py-1.5 bg-red-900/60 hover:bg-red-800 text-red-200 border border-red-500/40 rounded text-xs font-semibold transition flex items-center gap-1">
+                    <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Reset Board
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl w-full mx-auto p-3 md:p-6 flex flex-col">
+
+        <!-- ==================== GAME BOARD VIEW ==================== -->
+        <section id="viewBoard" class="flex-1 flex flex-col gap-4">
+            
+            <!-- Teams Header Scoreboard -->
+            <div id="scoreboardContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <!-- Dynamically populated team cards -->
+            </div>
+
+            <!-- Current Turn / Board Control Banner -->
+            <div class="bg-jeopardy-cardBg/80 border border-jeopardy-gold/40 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 shadow-lg">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs uppercase tracking-wider text-amber-300 font-bold flex items-center gap-1">
+                        <i data-lucide="crown" class="w-4 h-4 text-jeopardy-gold"></i> Board Control:
+                    </span>
+                    <span id="currentTurnDisplay" class="font-bold text-white text-base md:text-lg flex items-center gap-2">
+                        <!-- Populated dynamically -->
+                    </span>
+                </div>
+                <div class="text-xs text-gray-300 flex items-center gap-3">
+                    <span class="flex items-center gap-1">
+                        <i data-lucide="info" class="w-3.5 h-3.5 text-jeopardy-gold"></i> 
+                        Click active team to unselect control manually.
+                    </span>
+                </div>
+            </div>
+
+            <!-- Dynamic Jeopardy Grid Board -->
+            <div class="flex-1 min-h-[500px] bg-black/60 p-2 md:p-3 rounded-2xl border-2 border-jeopardy-gold/60 shadow-2xl flex flex-col overflow-x-auto">
+                <div id="gameGrid" class="grid gap-2 md:gap-3 flex-1 h-full min-w-[600px]">
+                    <!-- Populated dynamically via renderBoard() -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== EDITOR VIEW ==================== -->
+        <section id="viewEditor" class="hidden flex-1 flex-col gap-6">
+            <div class="glass-panel p-5 rounded-2xl">
+                <div class="flex flex-wrap justify-between items-center gap-4 mb-6 pb-4 border-b border-jeopardy-gold/20">
+                    <div>
+                        <h2 class="text-2xl font-black text-jeopardy-gold flex items-center gap-2">
+                            <i data-lucide="edit" class="w-6 h-6"></i> Jeopardy Game Builder
+                        </h2>
+                        <p class="text-xs text-gray-300 mt-1">Customize board dimensions, questions, and responses.</p>
+                    </div>
+
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <button onclick="generateLatvianTriviaPack()" class="px-3 py-2 bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-500/40 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+                            <i data-lucide="wand-2" class="w-4 h-4"></i> Generate Random LV Questions
+                        </button>
+                        <button onclick="loadSamplePreset()" class="px-3 py-2 bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200 border border-indigo-500/40 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+                            <i data-lucide="sparkles" class="w-4 h-4"></i> Load Sample Trivia
+                        </button>
+                        <button onclick="exportGameJSON()" class="px-3 py-2 bg-emerald-900/60 hover:bg-emerald-800 text-emerald-200 border border-emerald-500/40 rounded-lg text-xs font-bold transition flex items-center gap-1.5">
+                            <i data-lucide="download" class="w-4 h-4"></i> Export JSON
+                        </button>
+                        <label class="px-3 py-2 bg-amber-900/60 hover:bg-amber-800 text-amber-200 border border-amber-500/40 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer">
+                            <i data-lucide="upload" class="w-4 h-4"></i> Import JSON
+                            <input type="file" id="importJsonInput" accept=".json" onchange="importGameJSON(event)" class="hidden">
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Dimension Settings -->
+                <div class="bg-black/40 p-4 rounded-xl border border-jeopardy-gold/30 mb-6 flex flex-wrap items-center gap-6">
+                    <div class="flex items-center gap-3">
+                        <label class="text-xs font-bold text-amber-300 uppercase">Categories Count:</label>
+                        <select id="editorCategoryCount" onchange="changeGridDimensions()" class="bg-jeopardy-darkBg border border-jeopardy-gold/50 rounded px-2.5 py-1 text-sm font-bold text-white focus:outline-none">
+                            <option value="3">3 Categories</option>
+                            <option value="4">4 Categories</option>
+                            <option value="5">5 Categories (Default)</option>
+                            <option value="6">6 Categories</option>
+                            <option value="7">7 Categories</option>
+                            <option value="8">8 Categories</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <label class="text-xs font-bold text-amber-300 uppercase">Levels (Rows) Count:</label>
+                        <select id="editorLevelCount" onchange="changeGridDimensions()" class="bg-jeopardy-darkBg border border-jeopardy-gold/50 rounded px-2.5 py-1 text-sm font-bold text-white focus:outline-none">
+                            <option value="3">3 Levels</option>
+                            <option value="4">4 Levels</option>
+                            <option value="5">5 Levels (Default)</option>
+                            <option value="6">6 Levels</option>
+                            <option value="7">7 Levels</option>
+                            <option value="8">8 Levels</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Editor Categories Grid -->
+                <div id="editorCategoriesContainer" class="space-y-6">
+                    <!-- Dynamic Editor UI -->
+                </div>
+            </div>
+        </section>
+
+        <!-- ==================== 4-STAGE RULES & TEAMS VIEW ==================== -->
+        <section id="viewRules" class="hidden flex-1 flex-col gap-6 max-w-5xl mx-auto w-full">
+            
+            <!-- Rules Customization Panel -->
+            <div class="glass-panel p-5 md:p-6 rounded-2xl space-y-6">
+                <div class="flex flex-wrap items-center justify-between gap-3 border-b border-jeopardy-gold/20 pb-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-jeopardy-gold flex items-center gap-2">
+                            <i data-lucide="sliders" class="w-5 h-5"></i> Stage Rules System & Point Configuration
+                        </h2>
+                        <p class="text-xs text-gray-300 mt-0.5">Toggle enabled stages, end game auto-unselect rules, and set point scaling.</p>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button onclick="applyDefaultRulesPreset()" class="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-lg text-xs font-bold transition flex items-center gap-1">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Load Standard Preset
+                        </button>
+                    </div>
+                </div>
+
+                <!-- End Game Stage Trigger Rule -->
+                <div class="bg-black/50 p-4 rounded-xl border border-yellow-500/40 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-xs uppercase text-yellow-400 flex items-center gap-1.5">
+                            <i data-lucide="flag" class="w-4 h-4"></i> End Game Stage Trigger
+                        </span>
+                        <label class="flex items-center gap-1.5 text-xs text-amber-300 font-semibold cursor-pointer">
+                            <input type="checkbox" id="endGameStage_enabled" onchange="updateStageRuleSettings()" class="rounded accent-yellow-500"> Enabled
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-300">
+                        Checked at the start of every round (once each team has had one turn). If fewer clues remain than there are teams (e.g. 4 teams, 1 clue left), End Game mode triggers. Control is automatically unselected to start a round for all teams (FFA mode, 100% point value). Answering correctly in this stage selects that team for board control.
+                    </p>
+
+                    <div class="pt-1 flex items-center justify-between gap-2 flex-wrap">
+                        <span class="text-[11px] font-semibold text-gray-300">Endgame FFA Point Mode:</span>
+                        <select id="endGameFFA_pointMode" onchange="updateStageRuleSettings()" class="bg-black border border-yellow-500/40 rounded px-2 py-1 text-[11px] text-amber-200 font-semibold">
+                            <option value="stageProgression">Follow Stage Format (1st attempt = Stage 1 rule, 2nd = Stage 2, ...)</option>
+                            <option value="stage4Flat">Flat Stage 4 Rate for Every Attempt</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Section: Base Level Values -->
+                <div class="bg-black/40 p-4 rounded-xl border border-jeopardy-gold/20 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-bold text-sm text-amber-200 flex items-center gap-2">
+                            <i data-lucide="layers" class="w-4 h-4"></i> Base Level Clue Values
+                        </h3>
+                        <div class="flex gap-2">
+                            <button onclick="setBaseScalePreset('double')" class="px-2 py-1 bg-jeopardy-darkBg border border-jeopardy-gold/30 hover:border-jeopardy-gold text-[11px] rounded text-amber-300 font-semibold">Scale Level × 2 (2,4,6...)</button>
+                            <button onclick="setBaseScalePreset('hundreds')" class="px-2 py-1 bg-jeopardy-darkBg border border-jeopardy-gold/30 hover:border-jeopardy-gold text-[11px] rounded text-amber-300 font-semibold">Multi-Hundreds (200,400...)</button>
+                        </div>
+                    </div>
+
+                    <div id="baseLevelInputsContainer" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2">
+                        <!-- Populated dynamically based on level count -->
+                    </div>
+                </div>
+
+                <!-- Section: 4 Stage Outcome Controls -->
+                <div class="space-y-4">
+                    <h3 class="font-bold text-sm text-amber-200 flex items-center gap-2">
+                        <i data-lucide="git-branch" class="w-4 h-4"></i> Stage Rules Configuration
+                    </h3>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                        <!-- Stage 1: Selecting Team -->
+                        <div class="bg-black/50 p-4 rounded-xl border border-emerald-500/30 space-y-3">
+                            <div class="flex items-center justify-between border-b border-emerald-500/20 pb-2">
+                                <span class="font-bold text-xs uppercase text-emerald-400 flex items-center gap-1.5">
+                                    <span class="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-400 flex items-center justify-center text-[10px]">1</span>
+                                    Stage 1: Selecting Team
+                                </span>
+                                <label class="flex items-center gap-1.5 text-xs text-amber-300 font-semibold cursor-pointer">
+                                    <input type="checkbox" id="stage1_enabled" onchange="updateStageRuleSettings()" class="rounded accent-emerald-500"> Enabled
+                                </label>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="bg-jeopardy-darkBg p-2.5 rounded border border-gray-800 space-y-1.5">
+                                    <span class="block font-bold text-emerald-300 text-[11px]">Correct Answer</span>
+                                    <select id="stage1_correct_type" onchange="updateStageRuleSettings()" class="w-full bg-black border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white">
+                                        <option value="percent">% Of Base Clue</option>
+                                        <option value="fixed">Fixed Points (+/-)</option>
+                                    </select>
+                                    <input type="number" id="stage1_correct_val" onchange="updateStageRuleSettings()" class="w-full bg-black border border-emerald-500/40 rounded px-2 py-1 text-center font-bold text-emerald-400">
+                                </div>
+                                <div class="bg-jeopardy-darkBg p-2.5 rounded border border-gray-800 space-y-1.5">
+                                    <span class="block font-bold text-red-300 text-[11px]">Wrong Answer</span>
+                                    <select id="stage1_wrong_type" onchange="updateStageRuleSettings()" class="w-full bg-black border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white">
+                                        <option value="percent">% Of Base Clue</option>
+                                        <option value="fixed">Fixed Points (+/-)</option>
+                                    </select>
+                                    <input type="number" id="stage1_wrong_val" onchange="updateStageRuleSettings()" class="w-full bg-black border border-red-500/40 rounded px-2 py-1 text-center font-bold text-red-400">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stage 2: Steal Attempt -->
+                        <div class="bg-black/50 p-4 rounded-xl border border-indigo-500/30 space-y-3">
+                            <div class="flex items-center justify-between border-b border-indigo-500/20 pb-2">
+                                <span class="font-bold text-xs uppercase text-indigo-400 flex items-center gap-1.5">
+                                    <span class="w-5 h-5 rounded-full bg-indigo-500/20 border border-indigo-400 flex items-center justify-center text-[10px]">2</span>
+                                    Stage 2: Steal Stage
+                                </span>
+                                <label class="flex items-center gap-1.5 text-xs text-amber-300 font-semibold cursor-pointer">
+                                    <input type="checkbox" id="stage2_enabled" onchange="updateStageRuleSettings()" class="rounded accent-indigo-500"> Enabled
+                                </label>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="bg-jeopardy-darkBg p-2.5 rounded border border-gray-800 space-y-1.5">
+                                    <span class="block font-bold text-indigo-300 text-[11px]">Correct Steal</span>
+                                    <select id="stage2_correct_type" onchange="updateStageRuleSettings()" class="w-full bg-black border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white">
+                                        <option value="percent">% Of Base Clue</option>
+                                        <option value="fixed">Fixed Points (+/-)</option>
+                                    </select>
+                                    <input type="number" id="stage2_correct_val" onchange="updateStageRuleSettings()" class="w-full bg-black border border-indigo-500/40 rounded px-2 py-1 text-center font-bold text-indigo-400">
+                                </div>
+                                <div class="bg-jeopardy-darkBg p-2.5 rounded border border-gray-800 space-y-1.5">
+                                    <span class="block font-bold text-red-300 text-[11px]">Wrong Steal</span>
+                                    <select id="stage2_wrong_type" onchange="updateStageRuleSettings()" class="w-full bg-black border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white">
+                                        <option value="percent">% Of Base Clue</option>
+                                        <option value="fixed">Fixed Points (+/-)</option>
+                                    </select>
+                                    <input type="number" id="stage2_wrong_val" onchange="updateStageRuleSettings()" class="w-full bg-black border border-red-500/40 rounded px-2 py-1 text-center font-bold text-red-400">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stage 3: All-Wrong Fallback -->
+                        <div class="bg-black/50 p-4 rounded-xl border border-amber-500/30 space-y-3">
+                            <div class="flex items-center justify-between border-b border-amber-500/20 pb-2">
+                                <span class="font-bold text-xs uppercase text-amber-400 flex items-center gap-1.5">
+                                    <span class="w-5 h-5 rounded-full bg-amber-500/20 border border-amber-400 flex items-center justify-center text-[10px]">3</span>
+                                    Stage 3: All-Wrong Stage
+                                </span>
+                                <label class="flex items-center gap-1.5 text-xs text-amber-300 font-semibold cursor-pointer">
+                                    <input type="checkbox" id="stage3_enabled" onchange="updateStageRuleSettings()" class="rounded accent-amber-500"> Enabled
+                                </label>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="bg-jeopardy-darkBg p-2.5 rounded border border-gray-800 space-y-1.5">
+                                    <span class="block font-bold text-amber-300 text-[11px]">Correct Fallback</span>
+                                    <select id="stage3_correct_type" onchange="updateStageRuleSettings()" class="w-full bg-black border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white">
+                                        <option value="fixed">Fixed Points (+/-)</option>
+                                        <option value="percent">% Of Base Clue</option>
+                                    </select>
+                                    <input type="number" id="stage3_correct_val" onchange="updateStageRuleSettings()" class="w-full bg-black border border-amber-500/40 rounded px-2 py-1 text-center font-bold text-amber-300">
+                                </div>
+                                <div class="bg-jeopardy-darkBg p-2.5 rounded border border-gray-800 space-y-1.5">
+                                    <span class="block font-bold text-red-300 text-[11px]">Wrong Fallback</span>
+                                    <select id="stage3_wrong_type" onchange="updateStageRuleSettings()" class="w-full bg-black border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white">
+                                        <option value="fixed">Fixed Points (+/-)</option>
+                                        <option value="percent">% Of Base Clue</option>
+                                    </select>
+                                    <input type="number" id="stage3_wrong_val" onchange="updateStageRuleSettings()" class="w-full bg-black border border-red-500/40 rounded px-2 py-1 text-center font-bold text-red-400">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Stage 4: Free-For-All -->
+                        <div class="bg-black/50 p-4 rounded-xl border border-purple-500/30 space-y-3">
+                            <div class="flex items-center justify-between border-b border-purple-500/20 pb-2">
+                                <span class="font-bold text-xs uppercase text-purple-400 flex items-center gap-1.5">
+                                    <span class="w-5 h-5 rounded-full bg-purple-500/20 border border-purple-400 flex items-center justify-center text-[10px]">4</span>
+                                    Stage 4: Free-For-All (FFA)
+                                </span>
+                                <label class="flex items-center gap-1.5 text-xs text-amber-300 font-semibold cursor-pointer">
+                                    <input type="checkbox" id="stage4_enabled" onchange="updateStageRuleSettings()" class="rounded accent-purple-500"> Enabled
+                                </label>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="bg-jeopardy-darkBg p-2.5 rounded border border-gray-800 space-y-1.5">
+                                    <span class="block font-bold text-purple-300 text-[11px]">Correct Buzzer</span>
+                                    <select id="stage4_correct_type" onchange="updateStageRuleSettings()" class="w-full bg-black border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white">
+                                        <option value="percent">% Of Base Clue</option>
+                                        <option value="fixed">Fixed Points (+/-)</option>
+                                    </select>
+                                    <input type="number" id="stage4_correct_val" onchange="updateStageRuleSettings()" class="w-full bg-black border border-purple-500/40 rounded px-2 py-1 text-center font-bold text-purple-300">
+                                </div>
+                                <div class="bg-jeopardy-darkBg p-2.5 rounded border border-gray-800 space-y-1.5">
+                                    <span class="block font-bold text-red-300 text-[11px]">Wrong Buzzer</span>
+                                    <select id="stage4_wrong_type" onchange="updateStageRuleSettings()" class="w-full bg-black border border-gray-700 rounded px-1.5 py-1 text-[11px] text-white">
+                                        <option value="percent">% Of Base Clue</option>
+                                        <option value="fixed">Fixed Points (+/-)</option>
+                                    </select>
+                                    <input type="number" id="stage4_wrong_val" onchange="updateStageRuleSettings()" class="w-full bg-black border border-red-500/40 rounded px-2 py-1 text-center font-bold text-red-400">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Team Setup Panel -->
+            <div class="glass-panel p-5 md:p-6 rounded-2xl">
+                <div class="flex items-center justify-between mb-4 border-b border-jeopardy-gold/20 pb-3">
+                    <h2 class="text-xl font-bold text-jeopardy-gold flex items-center gap-2">
+                        <i data-lucide="users" class="w-5 h-5"></i> Team Management
+                    </h2>
+                    <button onclick="addNewTeam()" class="px-3 py-1.5 bg-jeopardy-gold hover:bg-amber-400 text-jeopardy-darkBg rounded-lg text-xs font-bold transition flex items-center gap-1 shadow">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Add Team
+                    </button>
+                </div>
+
+                <div id="teamsList" class="space-y-3">
+                    <!-- Teams dynamically loaded -->
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Host Gameplay Clue Modal -->
+    <div id="questionModal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center p-3 md:p-6 hidden">
+        <div class="bg-jeopardy-cardBg border-2 border-jeopardy-gold rounded-2xl max-w-4xl w-full max-h-[94vh] flex flex-col shadow-2xl overflow-hidden relative">
+            
+            <!-- Modal Header -->
+            <div class="bg-jeopardy-darkBg/90 px-6 py-3.5 border-b border-jeopardy-gold/30 flex items-center justify-between">
+                <div>
+                    <span id="modalCategoryTitle" class="text-jeopardy-gold font-bold text-sm uppercase tracking-widest block"></span>
+                    <span id="modalPointValue" class="text-white text-xs font-semibold text-gray-300"></span>
+                </div>
+                <button onclick="closeQuestionModal()" class="text-gray-400 hover:text-white transition p-1">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+
+            <!-- Automated Stage Header Banner -->
+            <div id="modalStageBanner" class="bg-black/80 px-4 py-2 border-b border-jeopardy-gold/30 flex items-center justify-between gap-2 text-xs font-bold text-amber-300">
+                <!-- Dynamically updated banner text -->
+            </div>
+
+            <!-- Modal Content (Question & Response) -->
+            <div class="p-6 md:p-8 flex-1 overflow-y-auto flex flex-col items-center justify-center text-center bg-gradient-to-b from-jeopardy-cardBg to-jeopardy-darkBg">
+                <div class="max-w-2xl w-full space-y-6">
+                    <!-- Clue Text -->
+                    <div class="space-y-2">
+                        <span class="text-xs uppercase tracking-widest text-amber-300 font-semibold block">Clue Question</span>
+                        <div id="modalQuestionText" class="text-xl md:text-2xl font-bold text-white leading-relaxed font-sans pointer-events-auto">
+                            <!-- Question Text -->
+                        </div>
+                    </div>
+
+                    <!-- Answer Text (Toggleable) -->
+                    <div id="modalAnswerContainer" class="hidden bg-black/50 border border-jeopardy-gold/40 rounded-xl p-4 transition-all">
+                        <span class="text-xs uppercase tracking-widest text-emerald-400 font-semibold block mb-1">Correct Response</span>
+                        <p id="modalAnswerText" class="text-lg md:text-xl font-bold text-jeopardy-gold">
+                            <!-- Answer Text -->
+                        </p>
+                    </div>
+
+                    <button id="toggleAnswerBtn" onclick="toggleAnswerReveal()" class="px-4 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-lg text-xs font-bold transition inline-flex items-center gap-2">
+                        <i data-lucide="eye" class="w-4 h-4"></i> Show Response
+                    </button>
+                </div>
+            </div>
+
+            <!-- Host Action & Scoring Panel -->
+            <div class="bg-black/85 border-t border-jeopardy-gold/30 p-4 md:p-5 space-y-4">
+                
+                <!-- Turn & Stage Outcome Controls (Stages 1..3) -->
+                <div id="standardStageControls" class="space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-3 bg-jeopardy-darkBg/90 p-3 rounded-xl border border-jeopardy-gold/30 text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-300 font-semibold">Attempting Team:</span>
+                            <span id="modalActiveTeamName" class="font-extrabold text-amber-300 text-sm px-2 py-0.5 rounded bg-black/60 border border-amber-400/40"></span>
+                        </div>
+
+                        <div id="stageRuleSummary" class="text-amber-200 font-semibold text-right text-xs">
+                            <!-- Summary -->
+                        </div>
+                    </div>
+
+                    <!-- Explicit Outcome Buttons -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button id="btnStageCorrect" onclick="submitOutcome('correct')" class="px-4 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-lg">
+                            <i data-lucide="check-circle" class="w-5 h-5"></i> Correct (<span id="btnValCorrect">+0</span>)
+                        </button>
+
+                        <button id="btnStageWrong" onclick="submitOutcome('wrong')" class="px-4 py-3.5 bg-red-600 hover:bg-red-500 text-white font-black rounded-xl text-sm transition flex items-center justify-center gap-2 shadow-lg">
+                            <i data-lucide="x-circle" class="w-5 h-5"></i> Wrong (<span id="btnValWrong">-0</span>)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stage 4 / End Game Free-For-All Controls -->
+                <div id="ffaStageControls" class="hidden space-y-3 bg-purple-950/40 p-3.5 rounded-xl border border-purple-500/40">
+                    <div class="text-center space-y-1">
+                        <span id="ffaStageTitle" class="text-xs uppercase font-black text-purple-300 tracking-wider">Free-For-All Mode</span>
+                        <p class="text-[11px] text-gray-300">Select which team answered correctly or specify wrong attempts / options below.</p>
+                        <p id="ffaRuleSummary" class="text-[11px] text-purple-200 font-semibold"></p>
+                    </div>
+
+                    <div id="ffaTeamButtons" class="flex flex-wrap items-center justify-center gap-2">
+                        <!-- Populated dynamically with team chips -->
+                    </div>
+
+                    <div id="ffaActionButtons" class="flex justify-center gap-2 mt-2">
+                        <!-- Dynamically generated per-team wrong buttons appear in ffaTeamButtons or handled here -->
+                        <button onclick="submitFFAOutcome(null, true)" class="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-bold transition border border-gray-600">
+                            No One / Skip Clue
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Show Correct Answer Option Only (Appears when all eligible teams fail or at the end of final stage) -->
+                <div id="revealOnlyControls" class="hidden text-center space-y-3 p-4 bg-amber-950/40 border border-amber-500/40 rounded-xl">
+                    <p class="text-xs font-bold text-amber-300">All teams have attempted or failed this clue.</p>
+                    <button onclick="revealCorrectAnswerOnly()" class="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-jeopardy-darkBg font-black rounded-xl text-xs transition inline-flex items-center gap-2 shadow-lg">
+                        <i data-lucide="eye" class="w-4 h-4"></i> Show Correct Answer
+                    </button>
+                </div>
+
+                <!-- Modal Bottom Controls -->
+                <div class="flex justify-between items-center pt-2 border-t border-gray-800 gap-2 flex-wrap">
+                    <span id="clueAttemptStatus" class="text-[11px] text-amber-300 italic">
+                        Select Correct or Wrong to automatically proceed.
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <button onclick="skipClueRevealAnswer()" title="Reveal the correct answer and mark this clue as played, at any point, with no score changes" class="px-4 py-1.5 bg-amber-600/80 hover:bg-amber-500 text-jeopardy-darkBg font-bold rounded-lg text-xs transition flex items-center gap-1.5">
+                            <i data-lucide="skip-forward" class="w-3.5 h-3.5"></i> Show Answer & Skip
+                        </button>
+                        <button onclick="closeQuestionModal()" class="px-4 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-xs font-semibold transition">
+                            Cancel & Close
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // Latvian Question Pool for Dynamic Random Generation
+        const latvianQuestionPool = [
+            { cat: "LATVIJAS ĢEOGRĀFIJA", q: "Kura ir Latvijas garākā upe, kas tek tikai caur Latvijas teritoriju?", a: "Gauja" },
+            { cat: "LATVIJAS ĢEOGRĀFIJA", q: "Kurš ir augstākais paugurs Latvijā?", a: "Gaiziņkalns" },
+            { cat: "LATVIJAS ĢEOGRĀFIJA", q: "Kura ir trešā lielākā pilsēta Latvijā pēc iedzīvotāju skaita?", a: "Liepāja" },
+            { cat: "LATVIJAS ĢEOGRĀFIJA", q: "Kura upe ietek Rīgas jūras līcī un tek cauri Rīgai?", a: "Daugava" },
+            { cat: "LATVIJAS ĢEOGRĀFIJA", q: "Kurš ir dziļākais ezers Latvijā?", a: "Dridzis" },
+            { cat: "LATVIJAS VĒSTURE", q: "Kurā gadā tika pasludināta Latvijas Republikas neatkarība?", a: "1918. gada 18. novembrī" },
+            { cat: "LATVIJAS VĒSTURE", q: "Kurš bija pirmais Latvijas Valsts prezidents?", a: "Jānis Čakste" },
+            { cat: "LATVIJAS VĒSTURE", q: "Kura pilsēta Kurzemes hercogistes laikā bija tās galvaspilsēta?", a: "Jelgava (Mītava)" },
+            { cat: "LATVIJAS VĒSTURE", q: "Kurā gadā Latvija pievienojās Eiropas Savienībai?", a: "2004. gadā" },
+            { cat: "LATVIJAS VĒSTURE", q: "Kā sauca mierīgo akciju 1989. gadā, kurā cilvēki sadotās rokās savienoja Viļņu, Rīgu un Tallinu?", a: "Baltijas ceļš" },
+            { cat: "KULTŪRA UN MĀKSLA", q: "Kurš sarakstīja Latvijas valsts himnu 'Dievs, svētī Latviju!'?", a: "Kārlis Baumanis (Baumaņu Kārlis)" },
+            { cat: "KULTŪRA UN MĀKSLA", q: "Kurš slavenais latviešu dzejnieks sarakstīja lugu 'Uguns un nakts'?", a: "Rainis" },
+            { cat: "KULTŪRA UN MĀKSLA", q: "Kā sauc latviešu tautas eposu, ko sarakstījis Andrejs Pumpurs?", a: "Lāčplēsis" },
+            { cat: "KULTŪRA UN MĀKSLA", q: "Kurš komponists sarakstīja mūziku kinofilmai 'Vella kalpi' un daudzām slavenām dziesmām?", a: "Raimonds Pauls" },
+            { cat: "KULTŪRA UN MĀKSLA", q: "Cik bieži parasti tiek rīkoti Vispārējie latviešu Dziesmu un Deju svētki?", a: "Reizi 5 gados" },
+            { cat: "DABA UN DZĪVNIEKI", q: "Kurš ir Latvijas nacionālais putns?", a: "Baltā cielava" },
+            { cat: "DABA UN DZĪVNIEKI", q: "Kurš kukainis ir izvēlēts par Latvijas nacionālo kukaini?", a: "Divpunktu mārīte" },
+            { cat: "DABA UN DZĪVNIEKI", q: "Kāds ir Latvijas nacionālais koks?", a: "Ozols (vīriešiem) un Liepa (sievietēm)" },
+            { cat: "DABA UN DZĪVNIEKI", q: "Kurš minerāls / akmens tiek uzskatīts par Latvijas dārgakmeni?", a: "Dzintars" },
+            { cat: "DABA UN DZĪVNIEKI", q: "Kurš ir lielākais plēsējs, kas pastāvīgi dzīvo Latvijas mežos?", a: "Lācis (vai Vilks)" },
+            { cat: "PASAULES ZINĀTNE", q: "Kurš ķīmiskais elements periodiskajā tabulā apzīmēts ar 'O'?", a: "Skābeklis" },
+            { cat: "PASAULES ZINĀTNE", q: "Cik planētu ir Saules sistēmā?", a: "Astoņas" },
+            { cat: "PASAULES ZINĀTNE", q: "Kurš zinātnieks formulēja gravitācijas likumu pēc tam, kad viņam uz galvas uzkrita ābols?", a: "Isāks Ņūtons" },
+            { cat: "PASAULES ZINĀTNE", q: "Kurš orgāns cilvēka ķermenī sūknē asinis?", a: "Sirds" },
+            { cat: "PASAULES ZINĀTNE", q: "Kāda ir ūdens ķīmiskā formula?", a: "H2O" },
+            { cat: "SPORTS UN ATŪTA", q: "Kurā sporta veidā Latvijas izlase 2023. gadā ieguva vēsturisko bronzas medaļu Pasaules čempionātā?", a: "Hokejā" },
+            { cat: "SPORTS UN ATŪTA", q: "Kurš latviešu basketbolists tika izvēlēts NBA draftā ar 4. numuru 2015. gadā?", a: "Kristaps Porziņģis" },
+            { cat: "SPORTS UN ATŪTA", q: "Cik spēlētāju no katras komandas vienlaikus atrodas uz laukuma basketbola spēlē?", a: "Pieci" },
+            { cat: "SPORTS UN ATŪTA", q: "Kurā pilsētā notika 2008. gada vasaras olimpiskās spēles, kur Māris Štrombergs ieguva zeltu BMX?", a: "Pekinā" },
+            { cat: "SPORTS UN ATŪTA", q: "Cik minūtes ilgst viens puslaiks futbolā?", a: "45 minūtes" },
+            { cat: "GASTRONOMIJA", q: "Kādu tradicionālu sieru latvieši gatavo uz Jāņiem?", a: "Jāņu sieru (ķimeņu sieru)" },
+            { cat: "GASTRONOMIJA", q: "No kāda dzēriena tiek gatavots Rīgas Melnais Balzams?", a: "Zāļu un sakņu uzlējuma (ar spirtu)" },
+            { cat: "GASTRONOMIJA", q: "Kurš dārzenis ir pamatā tradicionālajiem latviešu kartupeļu pankūkām?", a: "Kartupelis" },
+            { cat: "GASTRONOMIJA", q: "Kā sauc tradicionālo Kurzemei raksturīgo rauga mīklas pīrāgu ar burkānu un kartupeļu pildījumu?", a: "Sklandrausis" },
+            { cat: "GASTRONOMIJA", q: "Kuru maizi Latvijā vēsturiski uzskata par galveno spēka avotu?", a: "Rupjmaizi (rudzu maizi)" }
+        ];
+
+        // Default Sample Game Trivia Pack
+        const defaultSampleData = {
+            categoryCount: 5,
+            levelCount: 5,
+            categories: [
+                {
+                    id: 'cat_1',
+                    name: 'WORLD CAPITALS',
+                    clues: [
+                        { level: 1, question: "This capital city of France is home to the Eiffel Tower.", answer: "What is Paris?" },
+                        { level: 2, question: "This South American capital city sits high in the Andes mountains.", answer: "What is La Paz?" },
+                        { level: 3, question: "This European capital city on the Danube River was formed by joining two towns in 1873.", answer: "What is Budapest?" },
+                        { level: 4, question: "This Asian capital city is famous for Shibuya Crossing and its historic imperial palace.", answer: "What is Tokyo?" },
+                        { level: 5, question: "This capital of Australia was intentionally built as a planned city between Sydney and Melbourne.", answer: "What is Canberra?" }
+                    ]
+                },
+                {
+                    id: 'cat_2',
+                    name: 'SCIENCE & TECH',
+                    clues: [
+                        { level: 1, question: "This essential chemical element has the symbol 'O' and atomic number 8.", answer: "What is Oxygen?" },
+                        { level: 2, question: "This popular programming language created by Guido van Rossum is named after a British comedy troupe.", answer: "What is Python?" },
+                        { level: 3, question: "This fundamental force keeps planets in orbit around the Sun.", answer: "What is Gravity?" },
+                        { level: 4, question: "This scientist proposed the general theory of relativity in 1915.", answer: "Who is Albert Einstein?" },
+                        { level: 5, question: "This organelle is often referred to as the powerhouse of the cell.", answer: "What is the Mitochondria?" }
+                    ]
+                },
+                {
+                    id: 'cat_3',
+                    name: 'POP CULTURE',
+                    clues: [
+                        { level: 1, question: "This iconic superhero secret identity belongs to Bruce Wayne.", answer: "Who is Batman?" },
+                        { level: 2, question: "This streaming series featured characters Eleven, Dustin, and the Upside Down.", answer: "What is Stranger Things?" },
+                        { level: 3, question: "This artist released the hit albums '1989' and 'Midnights'.", answer: "Who is Taylor Swift?" },
+                        { level: 4, question: "In 'Star Wars', this green Jedi Master trained Luke Skywalker on Dagobah.", answer: "Who is Yoda?" },
+                        { level: 5, question: "This movie won Best Picture at the 95th Academy Awards in 2023.", answer: "What is Everything Everywhere All at Once?" }
+                    ]
+                },
+                {
+                    id: 'cat_4',
+                    name: 'HISTORY BUFF',
+                    clues: [
+                        { level: 1, question: "This ancient Egyptian queen was known for her alliances with Julius Caesar and Mark Antony.", answer: "Who is Cleopatra?" },
+                        { level: 2, question: "In 1969, this astronaut became the first person to walk on the Moon.", answer: "Who is Neil Armstrong?" },
+                        { level: 3, question: "This historical event began in 1789 with the Storming of the Bastille.", answer: "What is the French Revolution?" },
+                        { level: 4, question: "This ship famously sank on its maiden voyage in April 1912 after hitting an iceberg.", answer: "What is the Titanic?" },
+                        { level: 5, question: "This document was signed in 1215 by King John of England.", answer: "What is the Magna Carta?" }
+                    ]
+                },
+                {
+                    id: 'cat_5',
+                    name: 'LITERATURE',
+                    clues: [
+                        { level: 1, question: "This English playwright wrote 'Romeo and Juliet' and 'Hamlet'.", answer: "Who is William Shakespeare?" },
+                        { level: 2, question: "This Herman Melville novel begins with the famous line 'Call me Ishmael.'", answer: "What is Moby-Dick?" },
+                        { level: 3, question: "This dystopian 1949 novel by George Orwell introduced Big Brother.", answer: "What is 1984?" },
+                        { level: 4, question: "This fantasy author created Middle-earth and wrote 'The Lord of the Rings'.", answer: "Who is J.R.R. Tolkien?" },
+                        { level: 5, question: "This 1925 F. Scott Fitzgerald novel centers on Jay Gatsby.", answer: "What is The Great Gatsby?" }
+                    ]
+                }
+            ]
+        };
+
+        // Application State
+        let gameState = {
+            gameData: JSON.parse(JSON.stringify(defaultSampleData)),
+            teams: [
+                { id: 'team_1', name: 'Alpha Squad', score: 0, color: '#3b82f6' },
+                { id: 'team_2', name: 'Brainiacs', score: 0, color: '#10b981' },
+                { id: 'team_3', name: 'Champions', score: 0, color: '#f59e0b' }
+            ],
+            currentTurnTeamId: 'team_1', // Team currently holding Board Control (or null if unselected)
+            playedClues: {}, // key: "catIdx_level", value: true
+            
+            // Base level point values (1..N)
+            baseLevelValues: {
+                1: 2, 2: 4, 3: 6, 4: 8, 5: 10, 6: 12, 7: 14, 8: 16
+            },
+
+            // End Game Stage Enabled Option
+            endGameStageEnabled: true,
+
+            // How points are scored during Endgame FFA (the true unselected, round-robin buzzer
+            // round - NOT the Standard FFA fallback, which always uses Stage 4's rule directly).
+            //   'stageProgression' (default): the 1st attempt in the round uses Stage 1's rule,
+            //      the 2nd attempt uses Stage 2's rule, the 3rd uses Stage 3's, etc, following
+            //      whichever stages are enabled, in order (repeating the last one if the round
+            //      has more attempts than enabled stages).
+            //   'stage4Flat': every attempt in Endgame FFA simply uses Stage 4's configured rule.
+            endGameFFAPointMode: 'stageProgression',
+
+            // Stage Rule System
+            stageRules: {
+                1: { enabled: true, correct: { type: 'percent', val: 100 }, wrong: { type: 'percent', val: -100 } },
+                2: { enabled: true, correct: { type: 'percent', val: 50 }, wrong: { type: 'percent', val: 0 } },
+                3: { enabled: true, correct: { type: 'fixed', val: 1 }, wrong: { type: 'fixed', val: 0 } },
+                4: { enabled: false, correct: { type: 'percent', val: 100 }, wrong: { type: 'percent', val: 0 } }
+            },
+
+            activeModalClue: null
+        };
+
+        // History undo stack
+        let historyStack = [];
+
+        function saveStateSnapshot() {
+            historyStack.push(JSON.stringify({
+                teams: gameState.teams,
+                currentTurnTeamId: gameState.currentTurnTeamId,
+                playedClues: gameState.playedClues
+            }));
+            if (historyStack.length > 20) historyStack.shift();
+            updateUndoButtonState();
+        }
+
+        function undoLastAction() {
+            if (historyStack.length === 0) return;
+            const previous = JSON.parse(historyStack.pop());
+            gameState.teams = previous.teams;
+            gameState.currentTurnTeamId = previous.currentTurnTeamId;
+            gameState.playedClues = previous.playedClues;
+            
+            renderScoreboard();
+            renderBoard();
+            renderTeams();
+            updateUndoButtonState();
+        }
+
+        function updateUndoButtonState() {
+            const btn = document.getElementById('btnUndo');
+            if (!btn) return;
+            if (historyStack.length > 0) {
+                btn.disabled = false;
+                btn.className = "px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-400/40 rounded text-xs font-semibold text-amber-200 transition flex items-center gap-1 cursor-pointer shadow";
+            } else {
+                btn.disabled = true;
+                btn.className = "px-3 py-1.5 bg-gray-800 border border-gray-600 rounded text-xs font-semibold text-gray-400 opacity-50 cursor-not-allowed transition flex items-center gap-1";
+            }
+        }
+
+        window.onload = function() {
+            lucide.createIcons();
+            syncRulesInputsFromState();
+            renderScoreboard();
+            renderBoard();
+            renderEditor();
+            renderTeams();
+        };
+
+        function switchTab(tabName) {
+            const views = { board: 'viewBoard', editor: 'viewEditor', rules: 'viewRules' };
+            const navs = { board: 'navBoardBtn', editor: 'navEditorBtn', rules: 'navRulesBtn' };
+
+            Object.keys(views).forEach(v => {
+                const viewEl = document.getElementById(views[v]);
+                const navEl = document.getElementById(navs[v]);
+                if (v === tabName) {
+                    viewEl.classList.remove('hidden');
+                    viewEl.classList.add('flex');
+                    navEl.className = "px-4 py-1.5 rounded-md text-xs md:text-sm font-bold transition flex items-center gap-2 bg-jeopardy-gold text-jeopardy-darkBg shadow";
+                } else {
+                    viewEl.classList.add('hidden');
+                    viewEl.classList.remove('flex');
+                    navEl.className = "px-4 py-1.5 rounded-md text-xs md:text-sm font-bold text-gray-300 hover:text-white transition flex items-center gap-2";
+                }
+            });
+        }
+
+        function getBasePointsForLevel(level) {
+            return parseInt(gameState.baseLevelValues[level]) || (level * 2);
+        }
+
+        function calculateOutcomeDelta(baseClueVal, ruleConfig) {
+            if (ruleConfig.type === 'percent') {
+                return Math.round(baseClueVal * (ruleConfig.val / 100));
+            } else {
+                return parseInt(ruleConfig.val) || 0;
+            }
+        }
+
+        // Returns the enabled stage rule objects (1-4) in stage order, for use as the point
+        // progression during Endgame FFA's 'stageProgression' mode.
+        function getEnabledStageRulesInOrder() {
+            const order = [];
+            for (let s = 1; s <= 4; s++) {
+                if (gameState.stageRules[s] && gameState.stageRules[s].enabled) {
+                    order.push(gameState.stageRules[s]);
+                }
+            }
+            return order;
+        }
+
+        const DEFAULT_FFA_RULE = { correct: { type: 'percent', val: 100 }, wrong: { type: 'percent', val: 0 } };
+
+        // Resolves which {correct, wrong} rule to use for the NEXT attempt in a true Endgame FFA
+        // round (selectingTeamId is null). attemptIndex is 0-based: 0 = first attempt this round,
+        // 1 = second attempt, etc (equal to how many teams have already failed so far).
+        function resolveEndGameFFARule(attemptIndex) {
+            if (gameState.endGameFFAPointMode === 'stage4Flat') {
+                return gameState.stageRules[4] || DEFAULT_FFA_RULE;
+            }
+            // 'stageProgression' (default): walk the enabled stages in order, one per attempt,
+            // repeating the last enabled stage's rule if the round runs longer than that.
+            const order = getEnabledStageRulesInOrder();
+            if (order.length === 0) {
+                return gameState.stageRules[4] || DEFAULT_FFA_RULE;
+            }
+            const idx = Math.min(attemptIndex, order.length - 1);
+            return order[idx];
+        }
+
+        function getTotalCluesCount() {
+            const catCount = gameState.gameData.categoryCount || gameState.gameData.categories.length;
+            const lvlCount = gameState.gameData.levelCount || 5;
+            return catCount * lvlCount;
+        }
+
+        function getRemainingCluesCount() {
+            const total = getTotalCluesCount();
+            const played = Object.keys(gameState.playedClues).length;
+            return Math.max(0, total - played);
+        }
+
+        function renderScoreboard() {
+            const container = document.getElementById('scoreboardContainer');
+            container.innerHTML = '';
+
+            gameState.teams.forEach(team => {
+                const isControl = team.id === gameState.currentTurnTeamId;
+                const card = document.createElement('div');
+                card.className = `bg-jeopardy-cardBg/90 border-2 ${isControl ? 'border-jeopardy-gold board-control-glow ring-2 ring-jeopardy-gold/50' : 'border-jeopardy-gold/30'} rounded-xl p-3 flex flex-col justify-between transition-all relative overflow-hidden shadow-md cursor-pointer hover:border-jeopardy-gold group`;
+                
+                const bar = document.createElement('div');
+                bar.className = 'absolute top-0 left-0 right-0 h-1.5';
+                bar.style.backgroundColor = team.color;
+                card.appendChild(bar);
+
+                card.innerHTML += `
+                    <div class="flex items-center justify-between gap-1 mb-1 mt-1">
+                        <span class="font-bold text-xs md:text-sm text-gray-200 truncate" title="${team.name}">${team.name}</span>
+                        ${isControl ? '<span class="text-[9px] bg-jeopardy-gold text-jeopardy-darkBg font-black px-1.5 py-0.5 rounded uppercase flex items-center gap-0.5 shadow"><i data-lucide="crown" class="w-3 h-3"></i> Control</span>' : ''}
+                    </div>
+                    <div class="text-xl md:text-2xl font-black text-jeopardy-gold tracking-tight mt-1">
+                        ${team.score} <span class="text-xs font-normal text-amber-200/80">pts</span>
+                    </div>
+                `;
+                
+                card.onclick = () => {
+                    saveStateSnapshot();
+                    if (gameState.currentTurnTeamId === team.id) {
+                        // Click on currently selected team -> Unselect team manually
+                        gameState.currentTurnTeamId = null;
+                    } else {
+                        // Select this team
+                        gameState.currentTurnTeamId = team.id;
+                    }
+                    renderScoreboard();
+                };
+
+                container.appendChild(card);
+            });
+
+            updateTurnDisplay();
+            lucide.createIcons();
+        }
+
+        function updateTurnDisplay() {
+            const turnTeam = gameState.teams.find(t => t.id === gameState.currentTurnTeamId);
+            const display = document.getElementById('currentTurnDisplay');
+            if (turnTeam) {
+                display.innerHTML = `
+                    <span class="w-3.5 h-3.5 rounded-full inline-block border border-white/40 shadow-sm" style="background-color: ${turnTeam.color}"></span>
+                    <span class="text-jeopardy-gold">${turnTeam.name}</span>
+                `;
+            } else {
+                display.innerHTML = `
+                    <span class="text-purple-300 font-extrabold italic uppercase text-sm">[ UNSELECTED / FREE-FOR-ALL MODE ]</span>
+                `;
+            }
+        }
+
+        function renderBoard() {
+            const grid = document.getElementById('gameGrid');
+            grid.innerHTML = '';
+
+            const catCount = gameState.gameData.categoryCount || gameState.gameData.categories.length;
+            const lvlCount = gameState.gameData.levelCount || 5;
+
+            grid.style.gridTemplateColumns = `repeat(${catCount}, minmax(0, 1fr))`;
+
+            const categories = gameState.gameData.categories.slice(0, catCount);
+
+            categories.forEach(cat => {
+                const headerCell = document.createElement('div');
+                headerCell.className = 'bg-jeopardy-darkBlue border-2 border-jeopardy-gold/80 rounded-xl p-2 flex items-center justify-center text-center shadow-lg min-h-[60px]';
+                headerCell.innerHTML = `<span class="font-impact text-xs sm:text-sm md:text-base text-jeopardy-gold uppercase tracking-wider leading-tight text-shadow-gold">${cat.name || 'CATEGORY'}</span>`;
+                grid.appendChild(headerCell);
+            });
+
+            for (let level = 1; level <= lvlCount; level++) {
+                categories.forEach((cat, catIdx) => {
+                    const clueKey = `${catIdx}_${level}`;
+                    const isPlayed = !!gameState.playedClues[clueKey];
+                    const pts = getBasePointsForLevel(level);
+
+                    const card = document.createElement('button');
+                    card.disabled = isPlayed;
+
+                    if (isPlayed) {
+                        card.className = 'bg-black/40 border border-gray-800 rounded-xl flex items-center justify-center opacity-30 cursor-not-allowed min-h-[60px] md:min-h-[80px]';
+                        card.innerHTML = `<span class="font-impact text-xl text-gray-600">—</span>`;
+                    } else {
+                        card.className = 'bg-gradient-to-b from-jeopardy-cardBg to-jeopardy-darkBlue border-2 border-jeopardy-gold/70 hover:border-jeopardy-gold hover:scale-[1.02] active:scale-95 rounded-xl flex items-center justify-center shadow-xl transition-all cursor-pointer min-h-[60px] md:min-h-[80px] group';
+                        card.innerHTML = `<span class="font-impact text-2xl md:text-3xl text-jeopardy-gold group-hover:text-amber-300 text-shadow-jeopardy transition">${pts}</span>`;
+                        card.onclick = () => openQuestionModal(catIdx, level);
+                    }
+
+                    grid.appendChild(card);
+                });
+            }
+        }
+
+        function getNextTeamId(currentTeamId) {
+            if (!currentTeamId || gameState.teams.length === 0) return gameState.teams[0]?.id || null;
+            const idx = gameState.teams.findIndex(t => t.id === currentTeamId);
+            if (idx === -1) return gameState.teams[0].id;
+            const nextIdx = (idx + 1) % gameState.teams.length;
+            return gameState.teams[nextIdx].id;
+        }
+
+        function getNextEnabledStage(currentStage) {
+            let next = currentStage + 1;
+            while (next <= 4) {
+                if (gameState.stageRules[next] && gameState.stageRules[next].enabled) {
+                    return next;
+                }
+                next++;
+            }
+            return null;
+        }
+
+        function getLastEnabledStage() {
+            for (let s = 4; s >= 1; s--) {
+                if (gameState.stageRules[s] && gameState.stageRules[s].enabled) {
+                    return s;
+                }
+            }
+            return 1;
+        }
+
+        function openQuestionModal(catIdx, level) {
+            saveStateSnapshot();
+            const category = gameState.gameData.categories[catIdx];
+            const clue = (category && category.clues) ? (category.clues.find(c => c.level === level) || { question: "No question defined.", answer: "No answer." }) : { question: "No question defined.", answer: "No answer." };
+            const basePts = getBasePointsForLevel(level);
+
+            const activeBoardControlTeamId = gameState.currentTurnTeamId;
+
+            let initialStage = 1;
+            if (!activeBoardControlTeamId) {
+                // If team is unselected, question starts in Stage 4 (FFA)
+                initialStage = 4;
+            } else if (!gameState.stageRules[1].enabled) {
+                initialStage = getNextEnabledStage(1) || 4;
+            }
+
+            gameState.activeModalClue = {
+                catIdx,
+                level,
+                clue,
+                basePoints: basePts,
+                selectingTeamId: activeBoardControlTeamId,
+                currentAttemptingTeamId: activeBoardControlTeamId,
+                currentStage: initialStage,
+                stageStartTeamId: activeBoardControlTeamId,
+                failedTeams: new Set(),
+                // Tracks total wrong FFA attempts made so far and never resets (unlike
+                // failedTeams, which resets every time everyone in the round has had a turn).
+                // This is what drives the Endgame FFA point progression so that once the
+                // progression runs out of stages it stays parked on the last one, instead of
+                // restarting back at Stage 1's full value each time the round loops.
+                ffaAttemptCount: 0
+            };
+
+            document.getElementById('modalCategoryTitle').innerText = `${category ? category.name : 'CATEGORY'}`;
+            document.getElementById('modalPointValue').innerText = `Level ${level} • Base Value: ${basePts} Points`;
+            const questionEl = document.getElementById('modalQuestionText');
+            let questionHtml = String(clue.question ?? '');
+
+            // Convert raw HTTP/HTTPS links into anchors
+            if (!/<a\b[^>]*href\s*=/i.test(questionHtml)) {
+                questionHtml = questionHtml.replace(
+                    /(^|[\s(])((?:https?:\/\/)[^\s<]+)/gi,
+                    '$1<a href="$2" target="_blank" rel="noopener noreferrer" class="question-link text-blue-400 underline hover:text-blue-300 cursor-pointer">$2</a>'
+                );
+            }
+
+            questionEl.innerHTML = questionHtml;
+
+            questionEl.querySelectorAll('a').forEach(link => {
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.classList.add('question-link', 'text-blue-400', 'underline', 'hover:text-blue-300', 'cursor-pointer');
+                link.style.pointerEvents = 'auto';
+                link.addEventListener('click', event => event.stopPropagation());
+            });
+
+            document.getElementById('modalAnswerText').innerText = clue.answer;
+
+            document.getElementById('modalAnswerContainer').classList.add('hidden');
+            document.getElementById('toggleAnswerBtn').innerHTML = `<i data-lucide="eye" class="w-4 h-4"></i> Show Response`;
+            document.getElementById('clueAttemptStatus').innerText = "Select Correct or Wrong to automatically proceed.";
+
+            updateModalUIState();
+
+            document.getElementById('questionModal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function showOnlyRevealControls() {
+            document.getElementById('standardStageControls').classList.add('hidden');
+            document.getElementById('ffaStageControls').classList.add('hidden');
+            document.getElementById('revealOnlyControls').classList.remove('hidden');
+        }
+
+        function revealCorrectAnswerOnly() {
+            if (!gameState.activeModalClue) return;
+
+            forceRevealAnswer();
+
+            const clueState = gameState.activeModalClue;
+            const clueKey = `${clueState.catIdx}_${clueState.level}`;
+
+            if (clueState.selectingTeamId) {
+                gameState.currentTurnTeamId = getNextTeamId(clueState.selectingTeamId);
+            }
+            gameState.playedClues[clueKey] = true;
+            checkEndGameStageTrigger();
+
+            renderScoreboard();
+            renderBoard();
+
+            showOnlyRevealControls();
+        }
+
+        // Lets the host bail out of a clue at ANY moment - any stage, any point in the middle
+        // of scoring - reveal the correct answer and mark the clue unselectable, with no score
+        // changes for anyone. Board control still advances normally (Standard FFA/Stages 1-3
+        // move to the next team in line; true Endgame FFA stays unselected for the next clue),
+        // exactly the same as the "Show Correct Answer" reveal path.
+        function skipClueRevealAnswer() {
+            if (!gameState.activeModalClue) return;
+            revealCorrectAnswerOnly();
+            document.getElementById('clueAttemptStatus').innerText = "Clue skipped by host - correct answer revealed, no scores changed.";
+        }
+
+
+        function updateModalUIState() {
+            if (!gameState.activeModalClue) return;
+
+            const clueState = gameState.activeModalClue;
+            const stage = clueState.currentStage;
+            const basePts = clueState.basePoints;
+            const rules = gameState.stageRules[stage] || { correct: { type: 'percent', val: 100 }, wrong: { type: 'percent', val: 0 } };
+            const activeTeam = gameState.teams.find(t => t.id === clueState.currentAttemptingTeamId);
+            const selectingTeam = gameState.teams.find(t => t.id === clueState.selectingTeamId);
+
+            // Endgame FFA = board control was unselected (End Game trigger fired) and this
+            // clue opened straight into Stage 4 as a true round-robin buzzer round.
+            // Standard FFA = a team originally held control, but every prior stage (1-3)
+            // failed, so Stage 4 is only being used as a last-resort fallback.
+            const isEndgameFFA = stage === 4 && !clueState.selectingTeamId;
+
+            document.getElementById('revealOnlyControls').classList.add('hidden');
+
+            // Banner Display
+            const banner = document.getElementById('modalStageBanner');
+            const stageNames = {
+                1: "STAGE 1: SELECTING TEAM ATTEMPT",
+                2: "STAGE 2: STEAL ATTEMPT",
+                3: "STAGE 3: ALL-WRONG FALLBACK",
+                4: isEndgameFFA ? "STAGE 4: END GAME FREE-FOR-ALL" : "STAGE 4: FREE-FOR-ALL (FALLBACK)"
+            };
+
+            banner.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-jeopardy-gold animate-pulse"></span>
+                    <span>${stageNames[stage] || 'STAGE'}</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="text-gray-300">Selected By: <strong class="text-amber-200">${selectingTeam ? selectingTeam.name : 'Unselected Stage'}</strong></span>
+                    ${stage === 4 ? `<span class="text-purple-300 font-bold">${isEndgameFFA ? 'Buzzer Mode &mdash; Winner Claims Control' : 'Buzzer Mode &mdash; Control Cycles Normally'}</span>` : `Active Attempt: <span class="text-white font-extrabold underline">${activeTeam ? activeTeam.name : 'None'}</span>`}
+                </div>
+            `;
+
+            const stdControls = document.getElementById('standardStageControls');
+            const ffaControls = document.getElementById('ffaStageControls');
+
+            if (stage === 4 || !activeTeam) {
+                stdControls.classList.add('hidden');
+                ffaControls.classList.remove('hidden');
+                document.getElementById('ffaStageTitle').innerText = isEndgameFFA ? 'End Game Free-For-All' : 'Free-For-All (Fallback Stage)';
+                renderFFATeamButtons();
+            } else {
+                stdControls.classList.remove('hidden');
+                ffaControls.classList.add('hidden');
+
+                document.getElementById('modalActiveTeamName').innerText = activeTeam.name;
+                document.getElementById('modalActiveTeamName').style.color = activeTeam.color;
+
+                const deltaCorrect = calculateOutcomeDelta(basePts, rules.correct);
+                const deltaWrong = calculateOutcomeDelta(basePts, rules.wrong);
+
+                document.getElementById('btnValCorrect').innerText = (deltaCorrect >= 0 ? `+${deltaCorrect}` : `${deltaCorrect}`);
+                document.getElementById('btnValWrong').innerText = (deltaWrong >= 0 ? `+${deltaWrong}` : `${deltaWrong}`);
+
+                const correctText = rules.correct.type === 'percent' ? `${rules.correct.val}%` : `${rules.correct.val} pts`;
+                const wrongText = rules.wrong.type === 'percent' ? `${rules.wrong.val}%` : `${rules.wrong.val} pts`;
+
+                document.getElementById('stageRuleSummary').innerHTML = `
+                    <span class="block text-[10px] uppercase text-gray-400">Rules Configuration</span>
+                    <span>Correct: ${correctText} | Wrong: ${wrongText}</span>
+                `;
+            }
+        }
+
+        // Trigger End Game stage at the START of a round when fewer clues remain than there are
+        // teams. A "round" = every team getting exactly one turn (one clue each), so round
+        // boundaries land whenever the number of played clues is an exact multiple of the team
+        // count. E.g. 9 clues / 4 teams: round 1 ends at 4 played (5 left, not < 4, no trigger),
+        // round 2 ends at 8 played (1 left, < 4 teams -> End Game triggers going into round 3).
+        function checkEndGameStageTrigger() {
+            if (!gameState.endGameStageEnabled) return;
+
+            const teamCount = gameState.teams.length;
+            if (teamCount === 0) return;
+
+            const playedCount = Object.keys(gameState.playedClues).length;
+            const remainingClues = getRemainingCluesCount();
+
+            const isRoundBoundary = playedCount % teamCount === 0;
+
+            if (isRoundBoundary && remainingClues > 0 && remainingClues < teamCount) {
+                gameState.currentTurnTeamId = null; // Unselect board control
+            }
+        }
+
+        function submitOutcome(outcomeType) {
+            if (!gameState.activeModalClue) return;
+
+            const clueState = gameState.activeModalClue;
+            const stage = clueState.currentStage;
+            const basePts = clueState.basePoints;
+            const rules = gameState.stageRules[stage];
+            const attemptingTeam = gameState.teams.find(t => t.id === clueState.currentAttemptingTeamId);
+
+            const ruleConfig = (outcomeType === 'correct') ? rules.correct : rules.wrong;
+            const delta = calculateOutcomeDelta(basePts, ruleConfig);
+
+            if (attemptingTeam) {
+                attemptingTeam.score += delta;
+            }
+
+            const clueKey = `${clueState.catIdx}_${clueState.level}`;
+
+            if (outcomeType === 'correct') {
+                gameState.playedClues[clueKey] = true;
+                // Standard mode cycle: control advances smoothly to the next team in line
+                gameState.currentTurnTeamId = getNextTeamId(clueState.selectingTeamId);
+                checkEndGameStageTrigger();
+
+                renderScoreboard();
+                renderBoard();
+                closeQuestionModal();
+                return;
+            }
+
+            // Record failed attempt for current team
+            if (attemptingTeam) {
+                clueState.failedTeams.add(attemptingTeam.id);
+            }
+
+            const lastEnabledStage = getLastEnabledStage();
+
+            // Check if every team has failed WITHIN THIS STAGE (failedTeams is reset fresh each
+            // time a new stage begins - see the stage transition block below). Reveal controls
+            // only appear once that full stage-scoped cycle is exhausted AND we're on the last
+            // enabled stage (or already in Stage 4 FFA).
+            if (clueState.failedTeams.size >= gameState.teams.length) {
+                if (stage === 4 || stage === lastEnabledStage) {
+                    showOnlyRevealControls();
+                    return;
+                }
+            }
+
+            // Stage Flow Transition State Machine
+            const nextTeamId = getNextTeamId(clueState.currentAttemptingTeamId);
+
+            if (stage === 1) {
+                const nextStage = getNextEnabledStage(1);
+                if (nextStage) {
+                    clueState.currentStage = nextStage;
+                    clueState.currentAttemptingTeamId = nextTeamId;
+                    clueState.stageStartTeamId = nextTeamId;
+                    // Fix: each newly-entered stage is a fresh round - teams that failed in an
+                    // earlier stage (e.g. the original selecting team in Stage 1) must be able to
+                    // attempt again here, and the "all teams failed" check below must only count
+                    // failures that happened within THIS stage, not the whole clue's history.
+                    clueState.failedTeams = new Set();
+                } else {
+                    showOnlyRevealControls();
+                    return;
+                }
+            } else if (stage === 2 || stage === 3) {
+                if (nextTeamId === clueState.selectingTeamId || nextTeamId === clueState.stageStartTeamId) {
+                    const nextStage = getNextEnabledStage(stage);
+                    if (nextStage) {
+                        clueState.currentStage = nextStage;
+                        clueState.currentAttemptingTeamId = clueState.selectingTeamId;
+                        clueState.stageStartTeamId = clueState.selectingTeamId;
+                        // Fix: fresh round for the new stage - see comment above.
+                        clueState.failedTeams = new Set();
+                    } else {
+                        showOnlyRevealControls();
+                        return;
+                    }
+                } else {
+                    clueState.currentAttemptingTeamId = nextTeamId;
+                }
+            }
+
+            renderScoreboard();
+            updateModalUIState();
+            document.getElementById('clueAttemptStatus').innerText = `${attemptingTeam ? attemptingTeam.name : 'Team'} marked Wrong (${delta >= 0 ? '+' : ''}${delta} pts). Proceeding to next turn/stage.`;
+        }
+
+        // Render dual action buttons (Correct & Wrong) for each active team in Free-For-All mode
+        function renderFFATeamButtons() {
+            const container = document.getElementById('ffaTeamButtons');
+            container.innerHTML = '';
+
+            const basePts = gameState.activeModalClue.basePoints;
+            const clueState = gameState.activeModalClue;
+            const isEndgameFFA = !clueState.selectingTeamId;
+
+            // Endgame FFA can use a per-attempt rule progression (Stage 1's rule for the 1st
+            // attempt, Stage 2's for the 2nd, etc) or a flat Stage 4 rate, per the configured
+            // Endgame FFA Point Mode. Standard FFA (the Stage 1-3 fallback) always just uses
+            // Stage 4's configured rule directly. Progression uses ffaAttemptCount (never
+            // resets) rather than failedTeams.size (which resets every full round) so that once
+            // the progression exhausts its stages it stays parked on the last one.
+            const rules = isEndgameFFA
+                ? resolveEndGameFFARule(clueState.ffaAttemptCount)
+                : (gameState.stageRules[4] || DEFAULT_FFA_RULE);
+
+            const correctDelta = calculateOutcomeDelta(basePts, rules.correct);
+            const wrongDelta = calculateOutcomeDelta(basePts, rules.wrong);
+            const allFailed = clueState.failedTeams.size >= gameState.teams.length;
+
+            const ruleSummary = document.getElementById('ffaRuleSummary');
+            if (ruleSummary) {
+                if (isEndgameFFA && gameState.endGameFFAPointMode !== 'stage4Flat') {
+                    const order = getEnabledStageRulesInOrder();
+                    const stageNum = order.indexOf(rules) + 1; // display purposes only
+                    ruleSummary.innerText = `Attempt #${clueState.ffaAttemptCount + 1} this round - using Stage ${stageNum || '?'} rule (Correct: ${correctDelta >= 0 ? '+' : ''}${correctDelta} / Wrong: ${wrongDelta >= 0 ? '+' : ''}${wrongDelta})`;
+                } else if (isEndgameFFA) {
+                    ruleSummary.innerText = `Flat Stage 4 rate (Correct: ${correctDelta >= 0 ? '+' : ''}${correctDelta} / Wrong: ${wrongDelta >= 0 ? '+' : ''}${wrongDelta})`;
+                } else {
+                    ruleSummary.innerText = `Standard FFA fallback - Stage 4 rate (Correct: ${correctDelta >= 0 ? '+' : ''}${correctDelta} / Wrong: ${wrongDelta >= 0 ? '+' : ''}${wrongDelta})`;
+                }
+            }
+
+            gameState.teams.forEach(team => {
+                const isFailed = clueState.failedTeams.has(team.id);
+                const card = document.createElement('div');
+
+                if (isFailed) {
+                    card.className = "flex items-center gap-1 bg-gray-800/80 border border-gray-700 p-1.5 rounded-xl text-xs font-bold text-gray-400 opacity-40";
+                    card.innerHTML = `<i data-lucide="x-circle" class="w-3.5 h-3.5"></i> <span>${team.name} (Attempted)</span>`;
+                } else {
+                    card.className = "flex items-center gap-1.5 bg-black/60 border border-purple-500/30 p-1.5 rounded-xl shadow-md";
+                    card.innerHTML = `
+                        <button onclick="submitFFAOutcome('${team.id}', 'correct')" class="px-2.5 py-1.5 rounded-lg text-xs font-bold text-white transition flex items-center gap-1 hover:scale-105 active:scale-95 cursor-pointer" style="background-color: ${team.color}">
+                            <i data-lucide="check" class="w-3.5 h-3.5"></i> ${team.name} (${correctDelta >= 0 ? '+' : ''}${correctDelta} pts)
+                        </button>
+                        <button onclick="submitFFAOutcome('${team.id}', 'wrong')" title="Mark wrong attempt for ${team.name}" class="px-2 py-1.5 bg-red-900/60 hover:bg-red-800 text-red-200 border border-red-500/40 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer">
+                            <i data-lucide="x" class="w-3.5 h-3.5"></i> Wrong (${wrongDelta >= 0 ? '+' : ''}${wrongDelta})
+                        </button>
+                    `;
+                }
+
+                container.appendChild(card);
+            });
+
+            // Stage 4 Exception: render the reveal option ALONGSIDE the team buttons rather than
+            // replacing them - this stays true whether teams are still eligible or every team has
+            // already failed (in which case the team chips just show as "Attempted").
+            if (clueState.currentStage === 4) {
+                const revealContainer = document.createElement('div');
+                revealContainer.className = "w-full mt-3 pt-3 border-t border-purple-500/30 flex flex-col items-center gap-1.5";
+                revealContainer.innerHTML = `
+                    ${allFailed ? '<p class="text-xs font-bold text-amber-300">All teams have attempted or failed this clue.</p>' : ''}
+                    <button onclick="revealCorrectAnswerOnly()" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-jeopardy-darkBg font-black rounded-xl text-xs transition inline-flex items-center gap-2 shadow-lg">
+                        <i data-lucide="eye" class="w-4 h-4"></i> Show Correct Answer
+                    </button>
+                `;
+                container.appendChild(revealContainer);
+            }
+
+            lucide.createIcons();
+        }
+
+        // Handle both 'correct' and 'wrong' action types for specific teams in Free-For-All mode.
+        //
+        // Two distinct flows are handled here:
+        //  - Endgame FFA  (clueState.selectingTeamId is null): a true unselected, round-robin
+        //    buzzer round. Answering correctly claims board control for that team.
+        //  - Standard FFA (clueState.selectingTeamId is set): Stage 4 was only reached as a
+        //    last-resort fallback after Stages 1-3 all failed for the originally selected team.
+        //    Board control must NOT get locked onto whichever team happens to buzz in correctly -
+        //    it keeps cycling smoothly to the next team in line from the original selecting team,
+        //    exactly like Stages 1-3 do.
+        function submitFFAOutcome(teamId, actionType) {
+            if (!gameState.activeModalClue) return;
+
+            const clueState = gameState.activeModalClue;
+            const clueKey = `${clueState.catIdx}_${clueState.level}`;
+            const basePts = clueState.basePoints;
+            const isEndgameFFA = !clueState.selectingTeamId;
+
+            // Resolve the rule to use for THIS attempt. Endgame FFA can follow the Stage
+            // 1->2->3 progression (using ffaAttemptCount, which never resets, so the
+            // progression stays parked on the last enabled stage rather than restarting once
+            // it runs out of stages) or a flat Stage 4 rate (configurable); Standard FFA
+            // fallback always uses Stage 4 flat.
+            const rules = isEndgameFFA
+                ? resolveEndGameFFARule(clueState.ffaAttemptCount)
+                : (gameState.stageRules[4] || DEFAULT_FFA_RULE);
+
+            if (teamId && actionType === 'correct') {
+                const team = gameState.teams.find(t => t.id === teamId);
+                if (team) {
+                    // Fix: use the resolved correct-answer rule instead of always awarding the
+                    // raw base point value, so configured percentages/fixed values are respected.
+                    const correctDelta = calculateOutcomeDelta(basePts, rules.correct);
+                    team.score += correctDelta;
+
+                    if (isEndgameFFA) {
+                        // True Endgame FFA: answering correctly claims board control.
+                        gameState.currentTurnTeamId = team.id;
+                    } else {
+                        // Standard FFA fallback: control cycles smoothly to the next team in
+                        // line from the original selecting team - never locks onto the winner.
+                        gameState.currentTurnTeamId = getNextTeamId(clueState.selectingTeamId);
+                    }
+                    checkEndGameStageTrigger();
+
+                    gameState.playedClues[clueKey] = true;
+                    renderScoreboard();
+                    renderBoard();
+                    closeQuestionModal();
+                    return;
+                }
+            } else if (teamId && actionType === 'wrong') {
+                const team = gameState.teams.find(t => t.id === teamId);
+                const delta = calculateOutcomeDelta(basePts, rules.wrong);
+
+                if (team) {
+                    team.score += delta;
+                    clueState.failedTeams.add(team.id);
+                    clueState.ffaAttemptCount = (clueState.ffaAttemptCount || 0) + 1;
+                }
+
+                const allFailed = clueState.failedTeams.size >= gameState.teams.length;
+
+                if (allFailed && isEndgameFFA) {
+                    // True Endgame FFA never locks up - once everyone has had a turn, re-enable
+                    // every team for another go-round. The point progression keeps advancing
+                    // (ffaAttemptCount was NOT reset above) so it stays parked on the last
+                    // enabled stage's rule (e.g. Stage 3) rather than restarting from Stage 1 -
+                    // or, in Flat Stage 4 mode, simply keeps using Stage 4's rate every loop.
+                    clueState.failedTeams = new Set();
+                    renderScoreboard();
+                    renderFFATeamButtons();
+                    document.getElementById('clueAttemptStatus').innerText = `All teams have now attempted (last: ${team ? team.name : 'Team'} ${delta >= 0 ? '+' : ''}${delta} pts). Round resets - everyone may buzz in again.`;
+                } else if (allFailed) {
+                    // Standard FFA fallback: this was the last chance for the clue overall -
+                    // keep the FFA panel visible (team chips show as "Attempted") with the
+                    // "Show Correct Answer" option alongside it, rather than locking further.
+                    renderScoreboard();
+                    renderFFATeamButtons();
+                    document.getElementById('clueAttemptStatus').innerText = `All teams have now attempted this clue (${team ? team.name : 'Team'}: ${delta >= 0 ? '+' : ''}${delta} pts). Show the correct answer to proceed.`;
+                } else {
+                    renderScoreboard();
+                    renderFFATeamButtons();
+                    document.getElementById('clueAttemptStatus').innerText = `${team ? team.name : 'Team'} marked wrong (${delta >= 0 ? '+' : ''}${delta} pts). Remaining teams may attempt.`;
+                }
+            } else if (actionType === true) { // Skip Clue / No One
+                if (clueState.selectingTeamId) {
+                    gameState.currentTurnTeamId = getNextTeamId(clueState.selectingTeamId);
+                }
+                // In true Endgame FFA (no selecting team), skipping leaves control unselected
+                // so the next clue also opens directly into the Endgame FFA round.
+                gameState.playedClues[clueKey] = true;
+                checkEndGameStageTrigger();
+
+                renderScoreboard();
+                renderBoard();
+                closeQuestionModal();
+                return;
+            }
+        }
+
+        function closeQuestionModal() {
+            document.getElementById('questionModal').classList.add('hidden');
+            gameState.activeModalClue = null;
+        }
+
+        function toggleAnswerReveal() {
+            const container = document.getElementById('modalAnswerContainer');
+            const btn = document.getElementById('toggleAnswerBtn');
+            if (container.classList.contains('hidden')) {
+                container.classList.remove('hidden');
+                btn.innerHTML = `<i data-lucide="eye-off" class="w-4 h-4"></i> Hide Response`;
+            } else {
+                container.classList.add('hidden');
+                btn.innerHTML = `<i data-lucide="eye" class="w-4 h-4"></i> Show Response`;
+            }
+            lucide.createIcons();
+        }
+
+        // Ensures the answer is visible (never hides it) - unlike toggleAnswerReveal(), this is
+        // safe to call from automated flows (reveal / skip) regardless of whether the host had
+        // already manually shown the answer beforehand.
+        function forceRevealAnswer() {
+            const container = document.getElementById('modalAnswerContainer');
+            const btn = document.getElementById('toggleAnswerBtn');
+            container.classList.remove('hidden');
+            if (btn) btn.innerHTML = `<i data-lucide="eye-off" class="w-4 h-4"></i> Hide Response`;
+            lucide.createIcons();
+        }
+
+        function resetCurrentGameScore() {
+            if (confirm("Reset current board and team scores to 0?")) {
+                saveStateSnapshot();
+                gameState.playedClues = {};
+                gameState.teams.forEach(t => t.score = 0);
+                renderScoreboard();
+                renderBoard();
+            }
+        }
+
+        function syncRulesInputsFromState() {
+            const lvlCount = gameState.gameData.levelCount || 5;
+            const baseContainer = document.getElementById('baseLevelInputsContainer');
+            if (baseContainer) {
+                baseContainer.innerHTML = '';
+                for (let lvl = 1; lvl <= lvlCount; lvl++) {
+                    const val = getBasePointsForLevel(lvl);
+                    const div = document.createElement('div');
+                    div.className = 'bg-jeopardy-darkBg/90 p-2 rounded border border-gray-700 text-center';
+                    div.innerHTML = `
+                        <span class="block text-[10px] uppercase font-bold text-gray-400">Level ${lvl}</span>
+                        <input type="number" id="baseLvlVal_${lvl}" value="${val}" onchange="updateStageRuleSettings()" class="w-full bg-black border border-jeopardy-gold/40 rounded mt-1 px-1 py-1 text-center font-bold text-amber-300 text-xs focus:outline-none">
+                    `;
+                    baseContainer.appendChild(div);
+                }
+            }
+
+            const endGameChk = document.getElementById('endGameStage_enabled');
+            if (endGameChk) endGameChk.checked = gameState.endGameStageEnabled;
+
+            const endGameFFAModeSelect = document.getElementById('endGameFFA_pointMode');
+            if (endGameFFAModeSelect) endGameFFAModeSelect.value = gameState.endGameFFAPointMode || 'stageProgression';
+
+            [1, 2, 3, 4].forEach(s => {
+                const rule = gameState.stageRules[s];
+                
+                const enabledChk = document.getElementById(`stage${s}_enabled`);
+                const cType = document.getElementById(`stage${s}_correct_type`);
+                const cVal = document.getElementById(`stage${s}_correct_val`);
+                const wType = document.getElementById(`stage${s}_wrong_type`);
+                const wVal = document.getElementById(`stage${s}_wrong_val`);
+
+                if (enabledChk) enabledChk.checked = rule.enabled;
+                if (cType) cType.value = rule.correct.type;
+                if (cVal) cVal.value = rule.correct.val;
+                if (wType) wType.value = rule.wrong.type;
+                if (wVal) wVal.value = rule.wrong.val;
+            });
+
+            const catSelect = document.getElementById('editorCategoryCount');
+            const lvlSelect = document.getElementById('editorLevelCount');
+            if (catSelect) catSelect.value = gameState.gameData.categoryCount || gameState.gameData.categories.length;
+            if (lvlSelect) lvlSelect.value = gameState.gameData.levelCount || 5;
+        }
+
+        function updateStageRuleSettings() {
+            const lvlCount = gameState.gameData.levelCount || 5;
+            for (let lvl = 1; lvl <= lvlCount; lvl++) {
+                const input = document.getElementById(`baseLvlVal_${lvl}`);
+                if (input) {
+                    gameState.baseLevelValues[lvl] = parseInt(input.value) || (lvl * 2);
+                }
+            }
+
+            const endGameChk = document.getElementById('endGameStage_enabled');
+            if (endGameChk) gameState.endGameStageEnabled = endGameChk.checked;
+
+            const endGameFFAModeSelect = document.getElementById('endGameFFA_pointMode');
+            if (endGameFFAModeSelect) gameState.endGameFFAPointMode = endGameFFAModeSelect.value;
+
+            [1, 2, 3, 4].forEach(s => {
+                const isEnabled = document.getElementById(`stage${s}_enabled`).checked;
+                const cType = document.getElementById(`stage${s}_correct_type`).value;
+                const cVal = parseFloat(document.getElementById(`stage${s}_correct_val`).value) || 0;
+                const wType = document.getElementById(`stage${s}_wrong_type`).value;
+                const wVal = parseFloat(document.getElementById(`stage${s}_wrong_val`).value) || 0;
+
+                gameState.stageRules[s] = {
+                    enabled: isEnabled,
+                    correct: { type: cType, val: cVal },
+                    wrong: { type: wType, val: wVal }
+                };
+            });
+
+            renderBoard();
+            renderEditor();
+        }
+
+        function setBaseScalePreset(presetType) {
+            const lvlCount = gameState.gameData.levelCount || 5;
+            for (let lvl = 1; lvl <= lvlCount; lvl++) {
+                if (presetType === 'double') {
+                    gameState.baseLevelValues[lvl] = lvl * 2;
+                } else if (presetType === 'hundreds') {
+                    gameState.baseLevelValues[lvl] = lvl * 200;
+                }
+            }
+            syncRulesInputsFromState();
+            renderBoard();
+            renderEditor();
+        }
+
+        function applyDefaultRulesPreset() {
+            gameState.endGameStageEnabled = true;
+            gameState.endGameFFAPointMode = 'stageProgression';
+            setBaseScalePreset('double');
+            gameState.stageRules = {
+                1: { enabled: true, correct: { type: 'percent', val: 100 }, wrong: { type: 'percent', val: -100 } },
+                2: { enabled: true, correct: { type: 'percent', val: 50 }, wrong: { type: 'percent', val: 0 } },
+                3: { enabled: true, correct: { type: 'fixed', val: 1 }, wrong: { type: 'fixed', val: 0 } },
+                4: { enabled: false, correct: { type: 'percent', val: 100 }, wrong: { type: 'percent', val: 0 } }
+            };
+            syncRulesInputsFromState();
+            renderBoard();
+            renderEditor();
+        }
+
+        function changeGridDimensions() {
+            saveStateSnapshot();
+            const newCatCount = parseInt(document.getElementById('editorCategoryCount').value) || 5;
+            const newLvlCount = parseInt(document.getElementById('editorLevelCount').value) || 5;
+
+            gameState.gameData.categoryCount = newCatCount;
+            gameState.gameData.levelCount = newLvlCount;
+
+            while (gameState.gameData.categories.length < newCatCount) {
+                const idx = gameState.gameData.categories.length + 1;
+                gameState.gameData.categories.push({
+                    id: `cat_${idx}_${Date.now()}`,
+                    name: `CATEGORY ${idx}`,
+                    clues: []
+                });
+            }
+
+            gameState.gameData.categories.forEach((cat) => {
+                for (let lvl = 1; lvl <= newLvlCount; lvl++) {
+                    if (!cat.clues.find(c => c.level === lvl)) {
+                        cat.clues.push({
+                            level: lvl,
+                            question: `Sample Level ${lvl} question for ${cat.name}?`,
+                            answer: `Sample response for Level ${lvl}.`
+                        });
+                    }
+                }
+            });
+
+            syncRulesInputsFromState();
+            renderEditor();
+            renderBoard();
+        }
+
+        function generateLatvianTriviaPack() {
+            saveStateSnapshot();
+            const catCount = gameState.gameData.categoryCount || 5;
+            const lvlCount = gameState.gameData.levelCount || 5;
+
+            const poolShuffled = [...latvianQuestionPool].sort(() => 0.5 - Math.random());
+            
+            const grouped = {};
+            poolShuffled.forEach(item => {
+                if (!grouped[item.cat]) grouped[item.cat] = [];
+                grouped[item.cat].push(item);
+            });
+
+            const availableCatNames = Object.keys(grouped);
+            const categories = [];
+
+            for (let c = 0; c < catCount; c++) {
+                const catName = availableCatNames[c % availableCatNames.length] || `KATEGORIJA ${c + 1}`;
+                const catItems = grouped[catName] || poolShuffled;
+                const clues = [];
+
+                for (let l = 1; l <= lvlCount; l++) {
+                    const item = catItems[(l - 1) % catItems.length] || { q: `Jautājums Līmenim ${l}?`, a: `Atbilde Līmenim ${l}.` };
+                    clues.push({
+                        level: l,
+                        question: item.q,
+                        answer: item.a
+                    });
+                }
+
+                categories.push({
+                    id: `cat_lv_${c + 1}_${Date.now()}`,
+                    name: catName,
+                    clues: clues
+                });
+            }
+
+            gameState.gameData.categories = categories;
+            gameState.playedClues = {};
+
+            renderEditor();
+            renderBoard();
+            alert("Veiksmīgi saģenerēti nejauši jautājumi latviešu valodā!");
+        }
+
+        function renderEditor() {
+            const container = document.getElementById('editorCategoriesContainer');
+            container.innerHTML = '';
+
+            const catCount = gameState.gameData.categoryCount || gameState.gameData.categories.length;
+            const lvlCount = gameState.gameData.levelCount || 5;
+
+            gameState.gameData.categories.slice(0, catCount).forEach((cat, catIdx) => {
+                const card = document.createElement('div');
+                card.className = 'bg-black/40 border border-jeopardy-gold/30 rounded-xl p-4 space-y-4';
+                
+                card.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold text-xs text-amber-300 uppercase">Category ${catIdx + 1} Name:</span>
+                        <input type="text" value="${cat.name}" onchange="updateCategoryName(${catIdx}, this.value)" 
+                            class="bg-jeopardy-darkBg border border-jeopardy-gold/50 rounded px-3 py-1.5 text-sm font-bold text-jeopardy-gold flex-1 focus:outline-none focus:border-jeopardy-gold">
+                    </div>
+
+                    <div class="space-y-3 pl-2 md:pl-4 border-l-2 border-jeopardy-gold/20">
+                        ${Array.from({ length: lvlCount }, (_, i) => i + 1).map(lvl => {
+                            const clue = cat.clues.find(c => c.level === lvl) || { question: '', answer: '' };
+                            return `
+                                <div class="bg-jeopardy-darkBg/60 p-3 rounded-lg border border-gray-800 space-y-2">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-xs font-bold text-amber-200">Level ${lvl} Clue (${getBasePointsForLevel(lvl)} Pts)</span>
+                                    </div>
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block text-[10px] text-gray-400 uppercase mb-0.5">Clue / Question</label>
+                                            <input type="text" value="${clue.question.replace(/"/g, '&quot;')}" onchange="updateClueField(${catIdx}, ${lvl}, 'question', this.value)"
+                                                placeholder="Question text..." class="w-full bg-black/70 border border-gray-700 rounded px-2.5 py-1 text-xs text-white focus:outline-none">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] text-gray-400 uppercase mb-0.5">Correct Response</label>
+                                            <input type="text" value="${clue.answer.replace(/"/g, '&quot;')}" onchange="updateClueField(${catIdx}, ${lvl}, 'answer', this.value)"
+                                                placeholder="Answer text..." class="w-full bg-black/70 border border-gray-700 rounded px-2.5 py-1 text-xs text-amber-300 focus:outline-none">
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        function updateCategoryName(catIdx, newName) {
+            gameState.gameData.categories[catIdx].name = newName;
+            renderBoard();
+        }
+
+        function updateClueField(catIdx, level, field, value) {
+            let clue = gameState.gameData.categories[catIdx].clues.find(c => c.level === level);
+            if (!clue) {
+                clue = { level, question: '', answer: '' };
+                gameState.gameData.categories[catIdx].clues.push(clue);
+            }
+            clue[field] = value;
+        }
+
+        function loadSamplePreset() {
+            if (confirm("Overwrite current clues with sample trivia set?")) {
+                saveStateSnapshot();
+                gameState.gameData = JSON.parse(JSON.stringify(defaultSampleData));
+                syncRulesInputsFromState();
+                renderEditor();
+                renderBoard();
+            }
+        }
+
+        function exportGameJSON() {
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(gameState.gameData, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", "jeopardy_game_pack.json");
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+        }
+
+        function importGameJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if (parsed.categories && Array.isArray(parsed.categories)) {
+                        saveStateSnapshot();
+                        gameState.gameData = parsed;
+                        gameState.playedClues = {};
+                        syncRulesInputsFromState();
+                        renderEditor();
+                        renderBoard();
+                        alert("Game JSON successfully imported!");
+                    } else {
+                        alert("Invalid Jeopardy JSON structure.");
+                    }
+                } catch (err) {
+                    alert("Error parsing JSON file.");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        function renderTeams() {
+            const container = document.getElementById('teamsList');
+            container.innerHTML = '';
+
+            gameState.teams.forEach(team => {
+                const item = document.createElement('div');
+                item.className = 'flex items-center gap-3 bg-black/40 border border-jeopardy-gold/20 p-3 rounded-xl';
+                item.innerHTML = `
+                    <input type="color" value="${team.color}" onchange="updateTeamProp('${team.id}', 'color', this.value)" 
+                        class="w-8 h-8 rounded border-none cursor-pointer bg-transparent">
+                    <input type="text" value="${team.name}" onchange="updateTeamProp('${team.id}', 'name', this.value)" 
+                        class="bg-jeopardy-darkBg border border-gray-700 rounded px-3 py-1 text-sm font-bold text-white flex-1 focus:outline-none">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-amber-300 font-bold">Score: ${team.score}</span>
+                        ${gameState.teams.length > 1 ? `
+                            <button onclick="removeTeam('${team.id}')" class="text-red-400 hover:text-red-300 transition p-1">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+            lucide.createIcons();
+        }
+
+        function updateTeamProp(teamId, prop, value) {
+            const team = gameState.teams.find(t => t.id === teamId);
+            if (team) {
+                team[prop] = value;
+                renderScoreboard();
+            }
+        }
+
+        function addNewTeam() {
+            saveStateSnapshot();
+            const colors = ['#ec4899', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'];
+            const randomColor = colors[gameState.teams.length % colors.length];
+
+            gameState.teams.push({
+                id: `team_${Date.now()}`,
+                name: `Team ${gameState.teams.length + 1}`,
+                score: 0,
+                color: randomColor
+            });
+
+            renderTeams();
+            renderScoreboard();
+        }
+
+        function removeTeam(teamId) {
+            if (gameState.teams.length <= 1) return;
+            saveStateSnapshot();
+            gameState.teams = gameState.teams.filter(t => t.id !== teamId);
+            if (gameState.currentTurnTeamId === teamId) {
+                gameState.currentTurnTeamId = gameState.teams[0].id;
+            }
+            renderTeams();
+            renderScoreboard();
+        }
+    </script>
+</body>
+</html>
