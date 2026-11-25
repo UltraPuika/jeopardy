@@ -321,6 +321,7 @@
             <div class="flex-1 overflow-y-auto px-6 py-8 md:py-12 grid place-items-center text-center">
                 <div class="max-w-3xl w-full space-y-6">
                     <div id="modalQuestionText" class="text-2xl md:text-4xl font-bold leading-snug text-white whitespace-pre-line break-words"></div>
+                    <div id="modalQuestionMedia" class="space-y-4 w-full min-w-0"></div>
                     <div id="modalAnswerContainer" class="hidden rounded-2xl bg-black/30 ring-1 ring-amber-400/40 px-5 py-4 animate-pop">
                         <span class="block text-[11px] uppercase tracking-widest text-emerald-300 font-semibold mb-1">Correct response</span>
                         <p id="modalAnswerText" class="text-xl md:text-2xl font-bold text-amber-300 whitespace-pre-line break-words"></p>
@@ -611,6 +612,46 @@
             ];
         }
 
+        function normalizeMediaSource(source, kind) {
+            const value = typeof source === 'string' ? source.trim() : '';
+            if (/^https?:\/\//i.test(value)) {
+                try { return new URL(value).href; } catch { return ''; }
+            }
+            const dataPattern = kind === 'image'
+                ? /^data:image\/(?:png|jpeg|gif|webp|avif);base64,[a-z0-9+/=\s]+$/i
+                : /^data:audio\/(?:mpeg|mp3|wav|wave|x-wav|ogg|mp4|webm|aac|flac|x-flac);base64,[a-z0-9+/=\s]+$/i;
+            return dataPattern.test(value) ? value : '';
+        }
+
+        function renderClueMedia(container, clue) {
+            container.querySelectorAll('audio').forEach(audio => audio.pause());
+            container.replaceChildren();
+            const imageSource = normalizeMediaSource(clue?.image, 'image');
+            const audioSource = normalizeMediaSource(clue?.audio, 'audio');
+            if (imageSource) {
+                const image = document.createElement('img');
+                image.src = imageSource;
+                image.alt = 'Clue image';
+                image.className = 'block mx-auto max-w-full max-h-[40vh] object-contain rounded-lg';
+                image.addEventListener('error', () => {
+                    image.replaceWith(Object.assign(document.createElement('p'), { textContent: 'Image unavailable.', className: 'text-sm text-rose-300' }));
+                });
+                container.appendChild(image);
+            }
+            if (audioSource) {
+                const audio = document.createElement('audio');
+                audio.src = audioSource;
+                audio.controls = true;
+                audio.preload = 'none';
+                audio.className = 'block w-full max-w-full mx-auto';
+                audio.setAttribute('aria-label', 'Clue audio');
+                audio.addEventListener('error', () => {
+                    audio.replaceWith(Object.assign(document.createElement('p'), { textContent: 'Audio unavailable.', className: 'text-sm text-rose-300' }));
+                });
+                container.appendChild(audio);
+            }
+        }
+
         function normalizeGameData(d) {
             d = (d && typeof d === 'object') ? d : {};
             const categories = (Array.isArray(d.categories) ? d.categories : []).map((c, i) => ({
@@ -619,7 +660,9 @@
                 clues: (Array.isArray(c?.clues) ? c.clues : []).map(cl => ({
                     level: clampInt(cl?.level, 1, 8, 1),
                     question: String(cl?.question ?? ''),
-                    answer: String(cl?.answer ?? '')
+                    answer: String(cl?.answer ?? ''),
+                    image: normalizeMediaSource(cl?.image, 'image'),
+                    audio: normalizeMediaSource(cl?.audio, 'audio')
                 }))
             }));
             const maxLevel = Math.max(0, ...categories.flatMap(c => c.clues.map(cl => cl.level)));
@@ -1594,6 +1637,7 @@
             document.getElementById('modalCategoryTitle').textContent = category ? category.name : 'CATEGORY';
             document.getElementById('modalPointValue').textContent = `Level ${level} · ${basePts} points`;
             renderRichText(document.getElementById('modalQuestionText'), clue.question || fallback.question);
+            renderClueMedia(document.getElementById('modalQuestionMedia'), gameState.bettingModeEnabled ? null : clue);
             document.getElementById('modalAnswerText').textContent = clue.answer || fallback.answer;
             document.getElementById('modalAnswerContainer').classList.add('hidden');
             setAnswerButton(false);
@@ -1625,6 +1669,7 @@
             if (clueState.bettingPhase) {
                 clueState.bettingPhase = 'done';
                 document.getElementById('modalQuestionText').classList.remove('hidden');
+                renderClueMedia(document.getElementById('modalQuestionMedia'), clueState.clue);
                 document.getElementById('bettingControls').classList.add('hidden');
                 document.getElementById('bettingStealControls').classList.add('hidden');
             }
@@ -1803,6 +1848,7 @@
             clueState.bettingPhase = 'answer';
             clueState.currentAttemptingTeamId = team.id;
             document.getElementById('modalQuestionText').classList.remove('hidden');
+            renderClueMedia(document.getElementById('modalQuestionMedia'), clueState.clue);
             document.getElementById('toggleAnswerBtn').classList.remove('hidden');
             document.getElementById('btnStageCorrect').onclick = () => submitBettingOutcome(true, team.id, clueState);
             document.getElementById('btnStageWrong').onclick = () => submitBettingOutcome(false, team.id, clueState);
@@ -2036,6 +2082,7 @@
         }
 
         function closeQuestionModal(discard = false) {
+            document.querySelectorAll('#questionModal audio').forEach(audio => audio.pause());
             const clueState = gameState.activeModalClue;
             if (!discard && clueState?.bettingPhase && !['placeBet', 'done'].includes(clueState.bettingPhase)) {
                 document.getElementById('questionModal').classList.add('hidden');
@@ -2314,6 +2361,21 @@
                                     <div>
                                         <label class="label">Clue</label>
                                         <textarea rows="2" oninput="updateClueField(${catIdx}, ${lvl}, 'question', this.value)" placeholder="Question text…" class="input resize-y">${esc(clue.question)}</textarea>
+                                        <div class="mt-3 space-y-3">
+                                            ${['image', 'audio'].map(kind => `
+                                                <div class="space-y-1">
+                                                    <label class="label" for="media_${kind}_${catIdx}_${lvl}">${kind === 'image' ? 'Image' : 'Audio'} URL</label>
+                                                    <div class="flex items-center gap-2 min-w-0">
+                                                        <input id="media_${kind}_${catIdx}_${lvl}" type="url" value="${esc(clue[kind]?.startsWith('data:') ? '' : clue[kind] || '')}" placeholder="https://…" onchange="updateClueMedia(${catIdx}, ${lvl}, '${kind}', this.value)" class="input min-w-0">
+                                                        <label class="btn btn-ghost shrink-0 cursor-pointer" title="Upload ${kind}" aria-label="Upload ${kind}">
+                                                            <i data-lucide="upload" class="w-4 h-4"></i>
+                                                            <input type="file" accept="${kind === 'image' ? 'image/png,image/jpeg,image/gif,image/webp,image/avif' : 'audio/*'}" onchange="uploadClueMedia(event, ${catIdx}, ${lvl}, '${kind}')" class="hidden">
+                                                        </label>
+                                                        <button onclick="updateClueMedia(${catIdx}, ${lvl}, '${kind}', '')" title="Remove ${kind}" aria-label="Remove ${kind}" class="btn btn-danger shrink-0"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                                    </div>
+                                                </div>`).join('')}
+                                            <div id="mediaPreview_${catIdx}_${lvl}" class="space-y-3 min-w-0"></div>
+                                        </div>
                                     </div>
                                     <div>
                                         <label class="label">Correct response</label>
@@ -2323,7 +2385,9 @@
                         }).join('')}
                     </div>`;
                 container.appendChild(card);
+                levels.forEach(level => renderClueMedia(document.getElementById(`mediaPreview_${catIdx}_${level}`), cat.clues.find(clue => clue.level === level)));
             });
+            lucide.createIcons();
         }
 
         function updateGameTitle(value) {
@@ -2346,6 +2410,40 @@
             }
             clue[field] = value;
             scheduleSave();
+        }
+
+        function updateClueMedia(catIdx, level, kind, source) {
+            if (!['image', 'audio'].includes(kind)) return;
+            const normalized = normalizeMediaSource(source, kind);
+            if (source && !normalized) {
+                toast('Use a valid HTTP(S) media URL or a supported image/audio file.', 'error');
+                return;
+            }
+            updateClueField(catIdx, level, kind, normalized);
+            const clue = gameState.gameData.categories[catIdx].clues.find(clue => clue.level === level);
+            const input = document.getElementById(`media_${kind}_${catIdx}_${level}`);
+            if (input) input.value = normalized.startsWith('data:') ? '' : normalized;
+            const preview = document.getElementById(`mediaPreview_${catIdx}_${level}`);
+            if (preview) renderClueMedia(preview, clue);
+        }
+
+        function uploadClueMedia(event, catIdx, level, kind) {
+            const input = event.target;
+            const file = input.files[0];
+            input.value = '';
+            if (!file) return;
+            if (file.size > 2 * 1024 * 1024) {
+                toast('Upload limit is 2 MB per file. Use a URL for larger media.', 'error');
+                return;
+            }
+            const category = gameState.gameData.categories[catIdx];
+            const reader = new FileReader();
+            reader.onload = () => {
+                if (gameState.gameData.categories[catIdx] !== category) return;
+                updateClueMedia(catIdx, level, kind, String(reader.result));
+            };
+            reader.onerror = () => toast('Could not read the media file.', 'error');
+            reader.readAsDataURL(file);
         }
 
         function loadSamplePreset() {
