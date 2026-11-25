@@ -169,7 +169,12 @@
             </div>
 
             <!-- Builder -->
-            <div class="card p-5 md:p-6">
+            <div class="flex justify-end">
+                <button id="toggleGameEditorBtn" onclick="setEditorVisibility(document.getElementById('gameBuilder').classList.contains('hidden'))" aria-expanded="false" aria-controls="gameBuilder" class="btn btn-ghost">
+                    <i data-lucide="pencil-line" class="w-4 h-4"></i> Edit selected game
+                </button>
+            </div>
+            <div id="gameBuilder" class="hidden card p-5 md:p-6">
                 <div class="flex flex-wrap justify-between items-end gap-4 mb-5 pb-5 border-b border-white/10">
                     <div class="flex-1 min-w-[240px] max-w-md">
                         <label class="label" for="gameTitleInput">Game title</label>
@@ -852,6 +857,7 @@
             };
             teams.forEach(team => team.score = gameState.bettingModeEnabled ? gameState.bettingStartMoney : 0);
             historyStack = [];
+            setEditorVisibility(false);
             renderAll();
             saveNow();
         }
@@ -1336,6 +1342,7 @@
             const categories = Array.from({ length: 5 }, (_, i) => ({ name: `CATEGORY ${i + 1}`, clues: [] }));
             applySetup({ ...getSetup(), gameData: { title: 'New Game', categoryCount: 5, levelCount: 5, categories } }, uid('game'));
             toast('New blank game created.', 'success');
+            setEditorVisibility(true);
             document.getElementById('gameTitleInput').focus();
         }
 
@@ -1419,7 +1426,20 @@
 
         window.addEventListener('load', init);
 
+        function setEditorVisibility(visible) {
+            const builder = document.getElementById('gameBuilder');
+            builder.classList.toggle('hidden', !visible);
+            if (!visible) builder.querySelectorAll('audio').forEach(audio => audio.pause());
+            const button = document.getElementById('toggleGameEditorBtn');
+            button.setAttribute('aria-expanded', String(visible));
+            button.innerHTML = visible
+                ? '<i data-lucide="eye-off" class="w-4 h-4"></i> Hide editor'
+                : '<i data-lucide="pencil-line" class="w-4 h-4"></i> Edit selected game';
+            lucide.createIcons();
+        }
+
         function switchTab(tabName) {
+            setEditorVisibility(false);
             const views = { board: 'viewBoard', editor: 'viewEditor', rules: 'viewRules' };
             const navs = { board: 'navBoardBtn', editor: 'navEditorBtn', rules: 'navRulesBtn' };
             Object.keys(views).forEach(v => {
