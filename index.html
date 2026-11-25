@@ -1598,8 +1598,11 @@
 
         function openQuestionModal(catIdx, level) {
             if (gameState.activeModalClue?.bettingPhase && gameState.activeModalClue.bettingPhase !== 'done') {
-                document.getElementById('questionModal').classList.remove('hidden');
-                return;
+                if (gameState.activeModalClue.catIdx === catIdx && gameState.activeModalClue.level === level) {
+                    document.getElementById('questionModal').classList.remove('hidden');
+                    return;
+                }
+                closeQuestionModal();
             }
             if (gameState.playedClues[`${catIdx}_${level}`]) return;
             saveStateSnapshot();
@@ -2085,8 +2088,13 @@
             document.querySelectorAll('#questionModal audio').forEach(audio => audio.pause());
             const clueState = gameState.activeModalClue;
             if (!discard && clueState?.bettingPhase && !['placeBet', 'done'].includes(clueState.bettingPhase)) {
-                document.getElementById('questionModal').classList.add('hidden');
-                return;
+                const previous = JSON.parse(clueState.openSnapshot);
+                gameState.teams = previous.teams;
+                gameState.currentTurnTeamId = previous.currentTurnTeamId;
+                gameState.playedClues = previous.playedClues;
+                renderScoreboard();
+                renderBoard();
+                renderTeams();
             }
             // Drop the undo entry if nothing changed while the clue was open.
             if (clueState && historyStack[historyStack.length - 1] === clueState.openSnapshot && takeSnapshot(false) === clueState.openSnapshot) {
