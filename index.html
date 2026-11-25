@@ -224,6 +224,23 @@
                     </button>
                 </div>
 
+                <div class="rounded-lg bg-emerald-400/5 ring-1 ring-emerald-400/25 p-4 space-y-3">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <h3 class="font-bold text-sm text-emerald-300 flex items-center gap-2"><i data-lucide="coins" class="w-4 h-4"></i> Betting mode</h3>
+                        <label class="inline-flex items-center gap-2 cursor-pointer text-xs">
+                            <input type="checkbox" id="bettingMode_enabled" onchange="updateBettingSettings()" class="sr-only peer">
+                            <span class="switch-track"></span> Enabled
+                        </label>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div><label class="label" for="bettingStartMoney">Starting balance per team</label><input id="bettingStartMoney" type="number" min="0" step="1" onchange="updateBettingSettings()" class="input"></div>
+                        <div><label class="label" for="bettingBaseReward">Base question reward</label><input id="bettingBaseReward" type="number" min="0" step="1" onchange="updateBettingSettings()" class="input"></div>
+                        <div><label class="label" for="bettingMaxBet">Maximum additional bet</label><input id="bettingMaxBet" type="number" min="0" step="1" onchange="updateBettingSettings()" class="input"></div>
+                        <div><label class="label" for="bettingStealPercent">Steal percentage</label><input id="bettingStealPercent" type="number" min="0" max="100" step="1" onchange="updateBettingSettings()" class="input"></div>
+                    </div>
+                </div>
+
+                <fieldset id="standardScoringSettings" class="space-y-6 min-w-0 disabled:opacity-40">
                 <!-- End Game -->
                 <div class="rounded-2xl bg-amber-400/5 ring-1 ring-amber-400/25 p-4 space-y-3">
                     <div class="flex items-center justify-between gap-3">
@@ -269,6 +286,7 @@
                     </h3>
                     <div id="stageCardsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
                 </div>
+                </fieldset>
             </div>
 
             <!-- Teams -->
@@ -311,7 +329,23 @@
                 </div>
             </div>
 
-            <div class="border-t border-white/10 bg-black/40 p-4 md:p-5 space-y-4">
+            <div class="border-t border-white/10 bg-black/40 p-4 md:p-5 space-y-4 overflow-y-auto shrink min-h-0">
+
+                <div id="bettingControls" class="hidden space-y-3 rounded-lg bg-emerald-500/5 ring-1 ring-emerald-400/30 p-4">
+                    <div id="bettingTeamPickerWrap"><label class="label" for="bettingTeamPicker">Answering team</label><select id="bettingTeamPicker" onchange="updateBettingModalUI()" class="input"></select></div>
+                    <p id="bettingTeamBalance" class="text-sm break-words"></p>
+                    <p class="text-sm text-amber-300">Base reward: <strong id="bettingBaseLabel"></strong></p>
+                    <div class="flex flex-wrap items-end gap-3">
+                        <div class="flex-1 min-w-0"><label class="label" for="betAmountInput">Additional bet</label><input id="betAmountInput" type="number" min="0" step="1" value="0" oninput="updateBettingModalUI()" class="input"></div>
+                        <button onclick="document.getElementById('betAmountInput').value = '0'; updateBettingModalUI()" class="btn btn-ghost">No bet (0)</button>
+                    </div>
+                    <p class="text-xs text-slate-400">Maximum allowed: <strong id="bettingMaxLabel"></strong></p>
+                    <button id="lockBetBtn" onclick="lockBetAndRevealQuestion()" class="btn btn-gold w-full"><i data-lucide="lock" class="w-4 h-4"></i> Lock bet &amp; reveal question</button>
+                </div>
+                <div id="bettingStealControls" class="hidden space-y-3">
+                    <p id="bettingStealSummary" class="text-sm text-sky-300 break-words"></p>
+                    <div id="bettingStealButtons" class="grid grid-cols-2 gap-3"></div>
+                </div>
 
                 <div id="standardStageControls" class="space-y-3">
                     <div class="flex flex-wrap items-center justify-between gap-3 text-xs">
@@ -641,6 +675,7 @@
 
         function createDefaultState() {
             const teams = defaultTeams();
+            teams.forEach(team => team.score = normalizeBettingSettings().bettingStartMoney);
             return {
                 gameId: uid('game'),
                 gameData: normalizeGameData(clone(defaultSampleData)),
@@ -653,6 +688,7 @@
                 // 'stage4Flat': every Endgame FFA attempt uses Stage 4's rule.
                 endGameFFAPointMode: 'stageProgression',
                 stageRules: defaultStageRules(),
+                ...normalizeBettingSettings(),
                 activeModalClue: null
             };
         }
@@ -677,7 +713,8 @@
                 baseLevelValues: gameState.baseLevelValues,
                 endGameStageEnabled: gameState.endGameStageEnabled,
                 endGameFFAPointMode: gameState.endGameFFAPointMode,
-                stageRules: gameState.stageRules
+                stageRules: gameState.stageRules,
+                ...normalizeBettingSettings(gameState)
             };
         }
 
@@ -731,6 +768,7 @@
                 if (!raw) return null;
                 const s = JSON.parse(raw);
                 const teams = normalizeTeams(s.teams, true);
+                if (normalizeBettingSettings(s).bettingModeEnabled) teams.forEach(team => team.score = Math.max(0, team.score));
                 const playedClues = {};
                 if (s.playedClues && typeof s.playedClues === 'object') {
                     Object.keys(s.playedClues).forEach(k => { if (/^\d+_\d+$/.test(k)) playedClues[k] = true; });
@@ -745,7 +783,8 @@
                     baseLevelValues: normalizeBaseLevels(s.baseLevelValues),
                     endGameStageEnabled: s.endGameStageEnabled !== false,
                     endGameFFAPointMode: s.endGameFFAPointMode === 'stage4Flat' ? 'stage4Flat' : 'stageProgression',
-                    stageRules: normalizeRules(s.stageRules)
+                    stageRules: normalizeRules(s.stageRules),
+                    ...normalizeBettingSettings(s)
                 };
             } catch {
                 return null;
@@ -755,6 +794,7 @@
         // Replaces the current game with a setup (questions, teams, rules). Scores and progress start fresh.
         function applySetup(setup, gameId) {
             const teams = normalizeTeams(setup?.teams?.length ? setup.teams : gameState.teams, false);
+            closeQuestionModal(true);
             gameState = {
                 ...createDefaultState(),
                 gameId: gameId || uid('game'),
@@ -764,15 +804,18 @@
                 baseLevelValues: normalizeBaseLevels(setup?.baseLevelValues),
                 endGameStageEnabled: setup?.endGameStageEnabled !== false,
                 endGameFFAPointMode: setup?.endGameFFAPointMode === 'stage4Flat' ? 'stage4Flat' : 'stageProgression',
-                stageRules: normalizeRules(setup?.stageRules)
+                stageRules: normalizeRules(setup?.stageRules),
+                ...normalizeBettingSettings(setup)
             };
+            teams.forEach(team => team.score = gameState.bettingModeEnabled ? gameState.bettingStartMoney : 0);
             historyStack = [];
             renderAll();
             saveNow();
         }
 
         function hasProgress() {
-            return getPlayedCount() > 0 || gameState.teams.some(t => t.score !== 0);
+            const startingBalance = gameState.bettingModeEnabled ? gameState.bettingStartMoney : 0;
+            return getPlayedCount() > 0 || gameState.teams.some(team => team.score !== startingBalance);
         }
 
         // ---- Share links: the whole setup is compressed into the URL hash ----
@@ -1271,8 +1314,10 @@
 
         function undoLastAction() {
             if (historyStack.length === 0) return;
+            closeQuestionModal(true);
             const previous = JSON.parse(historyStack.pop());
             gameState.teams = previous.teams;
+            if (gameState.bettingModeEnabled) gameState.teams.forEach(team => team.score = Math.max(0, team.score));
             gameState.currentTurnTeamId = previous.currentTurnTeamId;
             gameState.playedClues = previous.playedClues;
             if (previous.gameData) {
@@ -1351,6 +1396,7 @@
         const lvlCount = () => gameState.gameData.levelCount || 5;
 
         function getBasePointsForLevel(level) {
+            if (gameState.bettingModeEnabled) return gameState.bettingBaseReward;
             const v = Number(gameState.baseLevelValues[level]);
             return Number.isFinite(v) ? v : level * 2;
         }
@@ -1508,6 +1554,11 @@
         }
 
         function openQuestionModal(catIdx, level) {
+            if (gameState.activeModalClue?.bettingPhase && gameState.activeModalClue.bettingPhase !== 'done') {
+                document.getElementById('questionModal').classList.remove('hidden');
+                return;
+            }
+            if (gameState.playedClues[`${catIdx}_${level}`]) return;
             saveStateSnapshot();
             const category = gameState.gameData.categories[catIdx];
             const fallback = { question: 'No question defined.', answer: 'No answer.' };
@@ -1516,8 +1567,10 @@
             const controlTeamId = gameState.currentTurnTeamId;
 
             let initialStage = 1;
-            if (!controlTeamId) initialStage = 4;
-            else if (!gameState.stageRules[1].enabled) initialStage = getNextEnabledStage(1) || 4;
+            if (!gameState.bettingModeEnabled) {
+                if (!controlTeamId) initialStage = 4;
+                else if (!gameState.stageRules[1].enabled) initialStage = getNextEnabledStage(1) || 4;
+            }
 
             gameState.activeModalClue = {
                 catIdx,
@@ -1530,6 +1583,11 @@
                 stageStartTeamId: controlTeamId,
                 failedTeams: new Set(),
                 ffaAttemptCount: 0,
+                bettingPhase: gameState.bettingModeEnabled ? 'placeBet' : null,
+                bettingTeamId: controlTeamId,
+                betAmount: 0,
+                stealPercent: gameState.bettingStealPercent,
+                attemptedTeams: new Set(),
                 openSnapshot: historyStack[historyStack.length - 1]
             };
 
@@ -1539,6 +1597,12 @@
             document.getElementById('modalAnswerText').textContent = clue.answer || fallback.answer;
             document.getElementById('modalAnswerContainer').classList.add('hidden');
             setAnswerButton(false);
+            document.getElementById('betAmountInput').value = '0';
+            document.getElementById('bettingTeamPicker').innerHTML = gameState.teams.map(team => `<option value="${esc(team.id)}">${esc(team.name)}</option>`).join('');
+            document.getElementById('modalQuestionText').classList.toggle('hidden', gameState.bettingModeEnabled);
+            document.getElementById('toggleAnswerBtn').classList.toggle('hidden', gameState.bettingModeEnabled);
+            document.getElementById('btnStageCorrect').onclick = () => submitOutcome('correct');
+            document.getElementById('btnStageWrong').onclick = () => submitOutcome('wrong');
             document.getElementById('clueAttemptStatus').textContent = 'Mark Correct or Wrong to proceed.';
 
             updateModalUIState();
@@ -1554,9 +1618,16 @@
 
         function revealCorrectAnswerOnly() {
             if (!gameState.activeModalClue) return;
+            if (gameState.activeModalClue.bettingPhase === 'done') return;
             forceRevealAnswer();
 
             const clueState = gameState.activeModalClue;
+            if (clueState.bettingPhase) {
+                clueState.bettingPhase = 'done';
+                document.getElementById('modalQuestionText').classList.remove('hidden');
+                document.getElementById('bettingControls').classList.add('hidden');
+                document.getElementById('bettingStealControls').classList.add('hidden');
+            }
             if (clueState.selectingTeamId) {
                 gameState.currentTurnTeamId = getNextTeamId(clueState.selectingTeamId);
             }
@@ -1580,6 +1651,10 @@
             if (!gameState.activeModalClue) return;
 
             const clueState = gameState.activeModalClue;
+            if (clueState.bettingPhase) {
+                updateBettingModalUI();
+                return;
+            }
             const stage = clueState.currentStage;
             const rules = gameState.stageRules[stage] || DEFAULT_FFA_RULE;
             const activeTeam = gameState.teams.find(t => t.id === clueState.currentAttemptingTeamId);
@@ -1635,7 +1710,7 @@
 
         // A "round" is every team getting one clue. At a round boundary, if fewer clues remain than teams, control is removed.
         function checkEndGameStageTrigger() {
-            if (!gameState.endGameStageEnabled) return;
+            if (gameState.bettingModeEnabled || !gameState.endGameStageEnabled) return;
             const teamCount = gameState.teams.length;
             if (teamCount === 0) return;
             const remaining = getRemainingCluesCount();
@@ -1644,10 +1719,138 @@
             }
         }
 
+        function normalizeBettingSettings(settings) {
+            return {
+                bettingModeEnabled: settings?.bettingModeEnabled !== false,
+                bettingStartMoney: clampInt(settings?.bettingStartMoney, 0, 100000000, 1000),
+                bettingBaseReward: clampInt(settings?.bettingBaseReward, 0, 100000000, 100),
+                bettingMaxBet: clampInt(settings?.bettingMaxBet, 0, 100000000, 500),
+                bettingStealPercent: clampInt(settings?.bettingStealPercent, 0, 100, 50)
+            };
+        }
+
+        function calculateBettingDelta(clueState, correct, steal = false) {
+            if (steal) return correct ? Math.round((clueState.basePoints + clueState.betAmount) * clueState.stealPercent / 100) : 0;
+            return correct ? clueState.basePoints + clueState.betAmount : -clueState.betAmount;
+        }
+
+        function getMaximumAdditionalBet(team) {
+            return team ? Math.max(0, Math.min(gameState.bettingMaxBet, Math.floor(team.score))) : 0;
+        }
+
+        function updateBettingModalUI() {
+            const clueState = gameState.activeModalClue;
+            if (!clueState?.bettingPhase) return;
+            const placing = clueState.bettingPhase === 'placeBet';
+            const stealing = clueState.bettingPhase === 'steal';
+            document.getElementById('bettingControls').classList.toggle('hidden', !placing);
+            document.getElementById('bettingStealControls').classList.toggle('hidden', !stealing);
+            document.getElementById('standardStageControls').classList.toggle('hidden', clueState.bettingPhase !== 'answer');
+            document.getElementById('ffaStageControls').classList.add('hidden');
+            document.getElementById('revealOnlyControls').classList.toggle('hidden', clueState.bettingPhase !== 'exhausted');
+            document.getElementById('modalStageBanner').textContent = placing ? 'Additional bet' : stealing ? 'Steal opportunity' : 'Bet locked';
+            if (placing) {
+                const picker = document.getElementById('bettingTeamPicker');
+                clueState.bettingTeamId = clueState.selectingTeamId || picker.value;
+                document.getElementById('bettingTeamPickerWrap').classList.toggle('hidden', !!clueState.selectingTeamId);
+                const team = gameState.teams.find(team => team.id === clueState.bettingTeamId);
+                const max = getMaximumAdditionalBet(team);
+                const input = document.getElementById('betAmountInput');
+                input.max = String(max);
+                document.getElementById('bettingTeamBalance').textContent = team ? `${team.name} balance: ${team.score}` : '';
+                document.getElementById('bettingBaseLabel').textContent = clueState.basePoints;
+                document.getElementById('bettingMaxLabel').textContent = max;
+                const bet = Number(input.value);
+                document.getElementById('lockBetBtn').disabled = !team || input.value.trim() === '' || !Number.isInteger(bet) || bet < 0 || bet > max;
+            } else if (clueState.bettingPhase === 'answer') {
+                const team = gameState.teams.find(team => team.id === clueState.bettingTeamId);
+                document.getElementById('modalActiveTeamName').textContent = team.name;
+                document.getElementById('modalActiveTeamName').style.color = team.color;
+                document.getElementById('stageRuleSummary').textContent = `Base ${clueState.basePoints} + additional bet ${clueState.betAmount}`;
+                document.getElementById('btnValCorrect').textContent = fmt(calculateBettingDelta(clueState, true));
+                document.getElementById('btnValWrong').textContent = fmt(calculateBettingDelta(clueState, false));
+            } else if (stealing) {
+                const team = gameState.teams.find(team => team.id === clueState.currentAttemptingTeamId);
+                const reward = calculateBettingDelta(clueState, true, true);
+                document.getElementById('bettingStealSummary').textContent = `${team.name} · Steal ${reward} (${clueState.stealPercent}% of base ${clueState.basePoints} + original bet ${clueState.betAmount})`;
+                const buttons = document.getElementById('bettingStealButtons');
+                buttons.replaceChildren();
+                [true, false].forEach(correct => {
+                    const button = document.createElement('button');
+                    button.className = `btn py-3 ${correct ? 'btn-emerald' : 'btn-danger'}`;
+                    button.textContent = correct ? `Correct +${reward}` : 'Wrong +0';
+                    button.onclick = event => {
+                        if (event.detail > 1) return;
+                        submitBettingOutcome(correct, team.id, clueState);
+                    };
+                    buttons.appendChild(button);
+                });
+            }
+            lucide.createIcons();
+        }
+
+        function lockBetAndRevealQuestion() {
+            const clueState = gameState.activeModalClue;
+            if (clueState?.bettingPhase !== 'placeBet') return;
+            const team = gameState.teams.find(team => team.id === clueState.bettingTeamId);
+            const input = document.getElementById('betAmountInput');
+            const bet = Number(input.value);
+            if (!team || input.value.trim() === '' || !Number.isInteger(bet) || bet < 0 || bet > getMaximumAdditionalBet(team)) {
+                toast('Enter a whole-number bet between 0 and the maximum allowed.', 'error');
+                return;
+            }
+            clueState.betAmount = bet;
+            clueState.bettingPhase = 'answer';
+            clueState.currentAttemptingTeamId = team.id;
+            document.getElementById('modalQuestionText').classList.remove('hidden');
+            document.getElementById('toggleAnswerBtn').classList.remove('hidden');
+            document.getElementById('btnStageCorrect').onclick = () => submitBettingOutcome(true, team.id, clueState);
+            document.getElementById('btnStageWrong').onclick = () => submitBettingOutcome(false, team.id, clueState);
+            document.getElementById('clueAttemptStatus').textContent = `${team.name} locked an additional bet of ${bet}.`;
+            updateBettingModalUI();
+        }
+
+        function submitBettingOutcome(correct, teamId, expectedClue = gameState.activeModalClue) {
+            const clueState = gameState.activeModalClue;
+            if (!clueState || clueState !== expectedClue || !['answer', 'steal'].includes(clueState.bettingPhase)) return;
+            if (clueState.currentAttemptingTeamId !== teamId || clueState.attemptedTeams.has(teamId)) return;
+            const team = gameState.teams.find(team => team.id === teamId);
+            if (!team) return;
+            const stealing = clueState.bettingPhase === 'steal';
+            clueState.attemptedTeams.add(teamId);
+            team.score = Math.max(0, team.score + calculateBettingDelta(clueState, correct, stealing));
+            renderScoreboard();
+            renderTeams();
+            if (correct) {
+                clueState.bettingPhase = 'done';
+                gameState.playedClues[`${clueState.catIdx}_${clueState.level}`] = true;
+                gameState.currentTurnTeamId = !clueState.selectingTeamId ? team.id : getNextTeamId(clueState.selectingTeamId);
+                checkEndGameStageTrigger();
+                renderScoreboard();
+                renderBoard();
+                closeQuestionModal();
+                return;
+            }
+            const nextTeamId = getNextTeamId(teamId);
+            if (!nextTeamId || clueState.attemptedTeams.has(nextTeamId)) {
+                clueState.bettingPhase = 'exhausted';
+                document.getElementById('clueAttemptStatus').textContent = 'All teams have attempted this clue.';
+            } else {
+                clueState.bettingPhase = 'steal';
+                clueState.currentAttemptingTeamId = nextTeamId;
+                document.getElementById('clueAttemptStatus').textContent = `${team.name} marked wrong. Next team may steal.`;
+            }
+            updateBettingModalUI();
+        }
+
         function submitOutcome(outcomeType) {
             if (!gameState.activeModalClue) return;
 
             const clueState = gameState.activeModalClue;
+            if (clueState.bettingPhase) {
+                if (clueState.bettingPhase === 'answer') submitBettingOutcome(outcomeType === 'correct', clueState.bettingTeamId);
+                return;
+            }
             const stage = clueState.currentStage;
             const rules = gameState.stageRules[stage];
             const attemptingTeam = gameState.teams.find(t => t.id === clueState.currentAttemptingTeamId);
@@ -1781,6 +1984,7 @@
         // Fallback FFA: control keeps cycling from the original selecting team.
         function submitFFAOutcome(teamId, actionType) {
             if (!gameState.activeModalClue) return;
+            if (gameState.activeModalClue.bettingPhase) return;
 
             const clueState = gameState.activeModalClue;
             const clueKey = `${clueState.catIdx}_${clueState.level}`;
@@ -1831,14 +2035,22 @@
             }
         }
 
-        function closeQuestionModal() {
+        function closeQuestionModal(discard = false) {
             const clueState = gameState.activeModalClue;
+            if (!discard && clueState?.bettingPhase && !['placeBet', 'done'].includes(clueState.bettingPhase)) {
+                document.getElementById('questionModal').classList.add('hidden');
+                return;
+            }
             // Drop the undo entry if nothing changed while the clue was open.
             if (clueState && historyStack[historyStack.length - 1] === clueState.openSnapshot && takeSnapshot(false) === clueState.openSnapshot) {
                 historyStack.pop();
                 updateUndoButtonState();
             }
             document.getElementById('questionModal').classList.add('hidden');
+            document.getElementById('bettingControls').classList.add('hidden');
+            document.getElementById('bettingStealControls').classList.add('hidden');
+            document.getElementById('modalQuestionText').classList.remove('hidden');
+            document.getElementById('toggleAnswerBtn').classList.remove('hidden');
             gameState.activeModalClue = null;
         }
 
@@ -1856,9 +2068,10 @@
 
         function resetCurrentGameScore() {
             if (!confirm('Reset all scores and played clues?')) return;
+            closeQuestionModal(true);
             saveStateSnapshot();
             gameState.playedClues = {};
-            gameState.teams.forEach(t => t.score = 0);
+            gameState.teams.forEach(t => t.score = gameState.bettingModeEnabled ? gameState.bettingStartMoney : 0);
             gameState.currentTurnTeamId = gameState.teams[0]?.id || null;
             renderScoreboard();
             renderBoard();
@@ -1910,13 +2123,19 @@
         }
 
         function syncRulesInputsFromState() {
+            document.getElementById('standardScoringSettings').disabled = gameState.bettingModeEnabled;
+            document.getElementById('bettingMode_enabled').checked = gameState.bettingModeEnabled;
+            document.getElementById('bettingStartMoney').value = gameState.bettingStartMoney;
+            document.getElementById('bettingBaseReward').value = gameState.bettingBaseReward;
+            document.getElementById('bettingMaxBet').value = gameState.bettingMaxBet;
+            document.getElementById('bettingStealPercent').value = gameState.bettingStealPercent;
             const baseContainer = document.getElementById('baseLevelInputsContainer');
             baseContainer.innerHTML = '';
             for (let lvl = 1; lvl <= lvlCount(); lvl++) {
                 const div = document.createElement('div');
                 div.innerHTML = `
                     <label class="label text-center" for="baseLvlVal_${lvl}">Level ${lvl}</label>
-                    <input type="number" id="baseLvlVal_${lvl}" value="${getBasePointsForLevel(lvl)}" onchange="updateStageRuleSettings()" class="input py-1.5 text-center font-bold text-amber-300">`;
+                    <input type="number" id="baseLvlVal_${lvl}" value="${gameState.baseLevelValues[lvl]}" onchange="updateStageRuleSettings()" class="input py-1.5 text-center font-bold text-amber-300">`;
                 baseContainer.appendChild(div);
             }
 
@@ -1936,7 +2155,34 @@
             document.getElementById('editorLevelCount').value = lvlCount();
         }
 
+        function updateBettingSettings() {
+            const enabled = document.getElementById('bettingMode_enabled').checked;
+            if (gameState.activeModalClue && enabled !== gameState.bettingModeEnabled) {
+                document.getElementById('bettingMode_enabled').checked = gameState.bettingModeEnabled;
+                toast('Finish the current clue before changing scoring modes.');
+                return;
+            }
+            const updateStartingBalances = !hasProgress() && !gameState.activeModalClue;
+            Object.assign(gameState, normalizeBettingSettings({
+                bettingModeEnabled: enabled,
+                bettingStartMoney: document.getElementById('bettingStartMoney').value,
+                bettingBaseReward: document.getElementById('bettingBaseReward').value,
+                bettingMaxBet: document.getElementById('bettingMaxBet').value,
+                bettingStealPercent: document.getElementById('bettingStealPercent').value
+            }));
+            if (updateStartingBalances) gameState.teams.forEach(team => team.score = enabled ? gameState.bettingStartMoney : 0);
+            if (enabled) gameState.teams.forEach(team => team.score = Math.max(0, team.score));
+            syncRulesInputsFromState();
+            renderScoreboard();
+            renderTeams();
+            renderBoard();
+            renderEditor();
+            if (gameState.activeModalClue?.bettingPhase === 'placeBet') updateBettingModalUI();
+            scheduleSave();
+        }
+
         function updateStageRuleSettings() {
+            if (gameState.bettingModeEnabled) return;
             for (let lvl = 1; lvl <= lvlCount(); lvl++) {
                 const input = document.getElementById(`baseLvlVal_${lvl}`);
                 if (input) {
@@ -2198,7 +2444,7 @@
             gameState.teams.push({
                 id: uid('team'),
                 name: `Team ${gameState.teams.length + 1}`,
-                score: 0,
+                score: gameState.bettingModeEnabled ? gameState.bettingStartMoney : 0,
                 color: TEAM_COLORS[gameState.teams.length % TEAM_COLORS.length]
             });
             renderTeams();
